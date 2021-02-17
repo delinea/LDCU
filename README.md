@@ -50,7 +50,7 @@ if savefile:
         f.write(header + summary)
 ```
 
-### Future development
+### Future developments
 - code documentation !!
 - MCMC fit of the intensity profiles
 - partial rewriting: wrap in a Python Class, store intermediate products, provide log_likelihood option
