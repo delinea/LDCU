@@ -13,6 +13,11 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
+Substantial portions of the Software are subject to copyright held by
+Néstor Espinoza (2015) as part of the project `limb-darkening` available at
+https://github.com/nespinoza/limb-darkening. All other portions of the
+Software are subject to copyright held by Adrien Deline (2021).
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
