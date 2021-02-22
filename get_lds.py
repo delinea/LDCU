@@ -416,7 +416,35 @@ def fit_power2(mu, I, Ierr=None):
     return ld_coeffs
 
 
-def downloader(url, verbose=True):
+def cmd_exists(cmd, path=None):
+    """ test if path contains an executable file with name
+    """
+    if path is None:
+        path = os.environ["PATH"].split(os.pathsep)
+    for prefix in path:
+        filename = os.path.join(prefix, cmd)
+        if not os.path.isfile(filename):
+            continue
+        executable = os.access(filename, os.X_OK)
+        if executable:
+            return True
+    return False
+
+
+def downloader_wget(url, verbose=True):
+    """
+    This function downloads a file from the given url using curl.
+    """
+    file_name = url.split('/')[-1]
+    if verbose:
+        print('\t      + Downloading file {:s} from {:s}.'.format(file_name,
+                                                                  url))
+        os.system('wget '+url)
+    else:
+        os.system('wget -q '+url)
+
+
+def downloader_curl(url, verbose=True):
     """
     This function downloads a file from the given url using curl.
     """
@@ -427,6 +455,16 @@ def downloader(url, verbose=True):
         os.system('curl -O '+url)
     else:
         os.system('curl -s -O '+url)
+
+
+if cmd_exists("wget"):
+    downloader = downloader_wget
+elif cmd_exists("curl"):
+    downloader = downloader_curl
+else:
+    def downloader(*args, **kwargs):
+        raise RuntimeError("either 'Wget' or 'cURL' must be installed to "
+                           "download file from a given URL")
 
 
 def ATLAS_model_search(s_met, s_grav, s_teff, s_vturb, verbose=True,

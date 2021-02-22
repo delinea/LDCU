@@ -790,7 +790,7 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "research,\n"
             "#             please consider citing Espinoza & Jordan (2015).\n"
             "#\n# MODIFIED BY:  Adrien Deline  (adrien.deline@unige.ch):\n"
-            "#   1) replaced 'wget' URL donwloader by 'curl'\n"
+            "#   1) added option for URL donwloader 'cURL'\n"
             "#   2) included power-2 limb-darkening law"
             " (Morello et al. 2017)\n"
             "#   3) corrected bug in the computation of closest vturb"
@@ -805,6 +805,10 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "ensure stellar\n"
             "#          intensity is positive and monotonically decreasing "
             "toward the limb\n"
+            "#   8) discard erroneous metallicity values in the ATLAS PCK "
+            "files\n"
+            "#   8) discard some erroneous metallicity values in the ATLAS PCK"
+            "files\n"
             "#\n" + 79*"#" + "\n")
     text = text.format(VERSION)
 
