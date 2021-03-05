@@ -33,6 +33,58 @@ PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -3.0, -4.0]
 # PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -2.5, -3.0, -4.0]
 
 
+def wget_downloader(url, filename=None, verbose=False):
+    if filename is None:
+        cmd = "wget {}".format(url)
+    else:
+        dirname = os.path.dirname(filename)
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+        cmd = "wget {} -O {}".format(url, filename)
+    if not verbose:
+        cmd += " -q"
+    try:
+        os.system(cmd)
+    except BaseException as e:
+        if os.path.isfile(filename):
+            os.remove(filename)
+        raise e
+    if not os.path.isfile(filename):
+        raise ConnectionError("could not download file from "
+                              "url '{}'".format(url))
+
+
+def curl_downloader(url, filename=None, verbose=False):
+    if filename is None:
+        cmd = "curl {} -O".format(url)
+    else:
+        dirname = os.path.dirname(filename)
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+        cmd = "curl {} -o {}".format(url, filename)
+    if not verbose:
+        cmd += " -s"
+    try:
+        os.system(cmd)
+    except BaseException as e:
+        if os.path.isfile(filename):
+            os.remove(filename)
+        raise e
+    if not os.path.isfile(filename):
+        raise ConnectionError("could not download file from "
+                              "url '{}'".format(url))
+
+
+if lds.cmd_exists("wget"):
+    downloader = wget_downloader
+elif lds.cmd_exists("curl"):
+    downloader = curl_downloader
+else:
+    def downloader(*args, **kwargs):
+        raise RuntimeError("either 'Wget' or 'cURL' must be installed to "
+                           "download file from a given URL")
+
+
 def update_atlas_grid(force_download=False, remove_downloaded=False):
     website = urlopen(ATLAS_WEBSITE)
     website_list = [str(line, "utf-8") for line in website.readlines()]
@@ -78,13 +130,15 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
         if url[:-2] in atlas_pck.keys():
             atlas_pck.pop(url_)
 
+    def filename_from_url(url):
+        return(os.path.join(ATLAS_DIR, "raw_models", os.path.basename(url)))
+
     pck_list = atlas_pck.copy()
     if force_download:
         input_text = "All ATLAS PCK files"
     else:
         for url in atlas_pck:
-            fn = os.path.join(ATLAS_DIR, "raw_models",
-                              os.path.basename(url))
+            fn = filename_from_url(url)
             if os.path.isfile(fn) or os.path.isfile(fn+"tar.gz"):
                 pck_list.pop(url)
         n_pck = len(pck_list)
@@ -103,27 +157,18 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
             if inp == "n":
                 sys.exit()
             elif inp == "" or inp == "y":
+                if not os.path.isdir(os.path.dirname(filename_from_url(""))):
+                    os.makedirs(os.path.dirname(filename_from_url("")))
                 for url in tqdm.tqdm(atlas_pck,
                                      desc="Downloading ATLAS PCK files",
                                      dynamic_ncols=True):
-                    fn = os.path.join(ATLAS_DIR, "raw_models",
-                                      os.path.basename(url))
-                    try:
-                        os.system("curl -s -o {} {}".format(url, fn))
-                    except BaseException as e:
-                        if os.path.isfile(fn):
-                            os.remove(fn)
-                        raise e
-                    if not os.path.isfile(fn):
-                        raise ConnectionError("could not download file from "
-                                              "url '{}'".format(url))
+                    downloader(url, filename_from_url(url))
                 break
 
     atlas_grid = {}
     for url in tqdm.tqdm(atlas_pck, desc="Building ATLAS grid",
                          dynamic_ncols=(True)):
-        fn = os.path.join(ATLAS_DIR, "raw_models",
-                          os.path.basename(url))
+        fn = filename_from_url(url)
         if not os.path.isfile(fn):
             if os.path.isfile(fn+".tar.gz"):
                 with tarfile.open(fn+".tar.gz") as tar:
@@ -181,9 +226,7 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     atlas_vturb = np.concatenate([atlas_grid[url][3] for url in atlas_grid])
     atlas_vturb = np.sort(list(set(atlas_vturb)))
     url_length = np.max([len(url) for url in atlas_grid])
-    name_length = np.max([len(os.path.join(ATLAS_DIR, "raw_models",
-                                           os.path.basename(url)))
-                          for url in atlas_grid])
+    name_length = np.max([len(filename_from_url(url)) for url in atlas_grid])
     atlas_grid_shape = (len(atlas_teff), len(atlas_logg), len(atlas_z),
                         len(atlas_vturb))
     atlas_urls = np.empty(atlas_grid_shape, dtype="|U{}".format(url_length))
@@ -198,7 +241,7 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
             i_vturb = np.where(atlas_vturb == vturb_)[0][0]
             atlas_urls[i_teff, i_logg, i_z, i_vturb] = url
             atlas_sizes[i_teff, i_logg, i_z, i_vturb] = size
-            fn = os.path.join(ATLAS_DIR, "raw_models", os.path.basename(url))
+            fn = filename_from_url(url)
             atlas_names[i_teff, i_logg, i_z, i_vturb] = fn
     atlas_grid = {"Teff": atlas_teff, "logg": atlas_logg,
                   "M/H": atlas_z, "vturb": atlas_vturb,
@@ -245,6 +288,10 @@ def update_phoenix_grid():
             url = PHOENIX_WEBSITE+z+"/"+filename
             phoenix_grid[url] = (teff, logg, z_, np.float32(2), filesize)
 
+    def filename_from_url(url, sub_dir):
+        return(os.path.join(PHOENIX_DIR, "raw_models", sub_dir,
+                            os.path.basename(url)))
+
     phoenix_teff = np.sort(list(set(phoenix_grid[fn][0]
                                     for fn in phoenix_grid)))
     phoenix_logg = np.sort(list(set(phoenix_grid[fn][1]
@@ -254,8 +301,7 @@ def update_phoenix_grid():
     phoenix_vturb = np.sort(list(set(phoenix_grid[fn][3]
                                      for fn in phoenix_grid)))
     url_length = np.max([len(url) for url in phoenix_grid])
-    name_length = np.max([len(os.path.join(PHOENIX_DIR, "raw_models", "m00",
-                                           os.path.basename(url)))
+    name_length = np.max([len(filename_from_url(url, "m00"))
                           for url in phoenix_grid])
     phoenix_grid_shape = (len(phoenix_teff), len(phoenix_logg), len(phoenix_z),
                           len(phoenix_vturb))
@@ -274,8 +320,7 @@ def update_phoenix_grid():
         phoenix_sizes[i_teff, i_logg, i_z, i_vturb] = size
         sub_dir = "{:02d}".format(int(abs(z*10)))
         sub_dir = "m"+sub_dir if z <= 0 else "p"+sub_dir
-        fn = os.path.join(PHOENIX_DIR, "raw_models",
-                          sub_dir, os.path.basename(url))
+        fn = filename_from_url(url, sub_dir)
         phoenix_names[i_teff, i_logg, i_z, i_vturb] = fn
     phoenix_grid = {"Teff": phoenix_teff, "logg": phoenix_logg,
                     "M/H": phoenix_z, "vturb": phoenix_vturb,
@@ -365,15 +410,7 @@ def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                 for url, ofn in zip(tqdm.tqdm(urls,
                                               desc="Downloading files",
                                               dynamic_ncols=True), ofns):
-                    try:
-                        os.system("curl -s {} -o {}".format(url, ofn))
-                    except BaseException as e:
-                        if os.path.isfile(ofn):
-                            os.remove(ofn)
-                        raise e
-                    if not os.path.isfile(ofn):
-                        raise ConnectionError("could not download file from "
-                                              "url '{}'".format(url))
+                    downloader(url, ofn)
                     with tarfile.open(ofn+".tar.gz", "w:gz") as tar:
                         tar.add(ofn, arcname=os.path.basename(ofn))
                     os.remove(ofn)
