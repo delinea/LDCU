@@ -36,11 +36,11 @@ star = {"Teff": ufloat(5261, 60),       # K
 RF_list = ["cheops_response_function.dat", ]
 
 # compute the limb-darkening coefficients
-ldc = gdls.get_lds_with_errors(**star, RF=RF_list)
+ldc = glds.get_lds_with_errors(**star, RF=RF_list)
 
 # to print and/or store the results
-header = gdls.get_header(**star)
-summary = gdls.get_summary(ldc)
+header = glds.get_header(**star)
+summary = glds.get_summary(ldc)
 print(summary)
 savefile = "results/my_results.txt"
 if savefile:
