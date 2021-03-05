@@ -139,7 +139,7 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     else:
         for url in atlas_pck:
             fn = filename_from_url(url)
-            if os.path.isfile(fn) or os.path.isfile(fn+"tar.gz"):
+            if os.path.isfile(fn) or os.path.isfile(fn+".tar.gz"):
                 pck_list.pop(url)
         n_pck = len(pck_list)
         if n_pck > 0:
