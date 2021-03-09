@@ -31,18 +31,20 @@ star = {"Teff": ufloat(5261, 60),       # K
 # list of response functions (pass bands) to be used
 RF_list = ["cheops_response_function.dat", ]
 
+# name of the file in which the LD coefficients are written
 savefile = "results/my_results.txt"
 if os.path.exists(savefile):
     raise FileExistsError("file '{}' already exists !".format(savefile))
 
 # query the ATLAS and PHOENIX database and build up a grid of available models
+#   (to be run only once each)
 glds.update_atlas_grid()
 glds.update_phoenix_grid()
 
 # compute the limb-darkening coefficients
 ldc = glds.get_lds_with_errors(**star, RF=RF_list)
 
-# to print and/or store the results
+# print and/or store the results
 header = glds.get_header(**star)
 summary = glds.get_summary(ldc)
 print(summary)
