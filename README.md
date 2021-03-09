@@ -22,10 +22,6 @@ import os
 from uncertainties import ufloat
 import get_lds_with_errors_v3 as glds
 
-# query the ATLAS and PHOENIX database and build up a grid of available models
-glds.update_atlas_grid()
-glds.update_phoenix_grid()
-
 # create a dict with your input stellar parameters
 star = {"Teff": ufloat(5261, 60),       # K
         "logg": ufloat(4.47, 0.05),     # cm/s2 (= log g)
@@ -35,6 +31,14 @@ star = {"Teff": ufloat(5261, 60),       # K
 # list of response functions (pass bands) to be used
 RF_list = ["cheops_response_function.dat", ]
 
+savefile = "results/my_results.txt"
+if os.path.exists(savefile):
+    raise FileExistsError("file '{}' already exists !".format(savefile))
+
+# query the ATLAS and PHOENIX database and build up a grid of available models
+glds.update_atlas_grid()
+glds.update_phoenix_grid()
+
 # compute the limb-darkening coefficients
 ldc = glds.get_lds_with_errors(**star, RF=RF_list)
 
@@ -42,12 +46,10 @@ ldc = glds.get_lds_with_errors(**star, RF=RF_list)
 header = glds.get_header(**star)
 summary = glds.get_summary(ldc)
 print(summary)
-savefile = "results/my_results.txt"
 if savefile:
-    if os.path.exists(savefile):
-        raise FileExistsError("file '{}' already exists !".format(savefile))
     with open(savefile, "w") as f:
         f.write(header + summary)
+
 ```
 
 ### Future developments
