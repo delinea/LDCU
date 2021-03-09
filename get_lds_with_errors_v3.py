@@ -432,7 +432,10 @@ def extract_atlas_pck(pck_file, overwrite=True):
                     tar.extractall(os.path.dirname(fn))
                 pck_file = fn
             else:
-                raise FileNotFoundError("could not find '{}'".format(pck_file))
+                raise FileNotFoundError("could not find '{}': this PCK file "
+                                        "must first be downloaded by calling "
+                                        "'update_atlas_grid()'"
+                                        .format(pck_file))
 
     metal = os.path.basename(pck_file)[1:4]
     vturb = os.path.basename(pck_file)[5:6]
@@ -441,6 +444,10 @@ def extract_atlas_pck(pck_file, overwrite=True):
         os.mkdir(pck_dir)
     filenames = []
     lines = lds.getFileLines(pck_file)
+    bar_format = "Extracting PCK file: {n:3} readable files processed"
+    pbar = tqdm.tqdm(bar_format=bar_format, postfix=[dict(rate=0), ],
+                     leave=False)
+    pbar.bar_format += " ({postfix[0][rate]:.2f} files/second)"
     while True:
         TEFF, GRAVITY, LH = lds.getATLASStellarParams(lines)
         pck_subdir = os.path.join(pck_dir, TEFF)
@@ -476,9 +483,14 @@ def extract_atlas_pck(pck_file, overwrite=True):
         if overwrite or not os.path.isfile(tarname):
             with tarfile.open(tarname, "w:gz") as tar:
                 tar.add(filename, os.path.basename(filename))
-        os.remove(filename)
+        if os.path.isfile(filename):
+            os.remove(filename)
+        pbar.postfix[0]["rate"] = pbar.n/pbar.format_dict["elapsed"]
+        pbar.update()
         if(i == len(lines)-1):
             break
+
+    pbar.close()
 
     if not os.path.isfile(pck_tarfile):
         with tarfile.open(pck_tarfile, "w:gz") as tar:
@@ -489,7 +501,8 @@ def extract_atlas_pck(pck_file, overwrite=True):
 
 
 def get_profile_interpolators(subgrids, RF, interpolation_order=1,
-                              atlas_correction=True, photon_correction=True):
+                              atlas_correction=True, photon_correction=True,
+                              overwrite_pck=False):
     if type(RF) is str:
         RF_list = [RF, ]
         single_RF = True
@@ -534,8 +547,21 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                     tar.extractall(os.path.dirname(tarname))
                 filename = tarname[:-7]
             elif len(tarnames) == 0:
-                raise FileNotFoundError("could not find '{}'"
-                                        .format(filename+".tar.gz"))
+                extract_atlas_pck(pck_file, overwrite=overwrite_pck)
+                tarnames = glob.glob(filename+".tar.gz")
+                if len(tarnames) == 0:
+                    raise FileNotFoundError("could not find '{}'"
+                                            " after PCK extraction"
+                                            .format(filename+".tar.gz"))
+                elif len(tarnames) == 1:
+                    tarname = tarnames[0]
+                    with tarfile.open(tarname) as tar:
+                        tar.extractall(os.path.dirname(tarname))
+                    filename = tarname[:-7]
+                else:
+                    raise RuntimeError("found multiple files '{}'"
+                                       " after PCK extraction"
+                                       .format(filename+".tar.gz"))
             else:
                 raise RuntimeError("found multiple files '{}'"
                                    .format(filename+".tar.gz"))
@@ -964,7 +990,8 @@ def get_summary(ldc, fmt="8.6f"):
 
 
 def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
-                        nsamples=1000, RF="cheops_response_function.dat"):
+                        nsamples=1000, RF="cheops_response_function.dat",
+                        overwrite_pck=False):
     if vturb is None:
         vturb = ufloat(2, .5)
     for par in [Teff, logg, M_H, vturb]:
@@ -986,7 +1013,8 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
     ip_interp = get_profile_interpolators(subgrids, RF_list,
                                           interpolation_order=1,
                                           atlas_correction=True,
-                                          photon_correction=True)
+                                          photon_correction=True,
+                                          overwrite_pck=overwrite_pck)
 
     # Drawing stellar parameters from normal distributions
     vals = np.full((nsamples, 4), np.nan)
