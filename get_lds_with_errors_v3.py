@@ -869,7 +869,7 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "#          intensity is positive and monotonically decreasing "
             "toward the limb\n"
             "#   8) discard some erroneous metallicity values in the ATLAS PCK"
-            "files\n"
+            " files\n"
             "#\n" + 79*"#" + "\n")
     text = text.format(VERSION)
 
