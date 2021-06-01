@@ -868,8 +868,6 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "ensure stellar\n"
             "#          intensity is positive and monotonically decreasing "
             "toward the limb\n"
-            "#   8) discard erroneous metallicity values in the ATLAS PCK "
-            "files\n"
             "#   8) discard some erroneous metallicity values in the ATLAS PCK"
             "files\n"
             "#\n" + 79*"#" + "\n")
@@ -1110,64 +1108,3 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
     # store coeff and errors
 
     return ldc_all
-
-
-if __name__ == "__main__":
-    # update_atlas_grid()
-    # update_phoenix_grid()
-
-    print_result = True
-    savefile = None
-
-    # input stellar parameter
-    star = {"Teff": ufloat(5261, 60),       # K
-            "logg": ufloat(4.47, 0.05),     # cm/s2 (= log g)
-            "M_H": ufloat(0.04, 0.05),      # dex (= M/H)
-            "vturb": None}                  # km/s
-    star = {"Teff": ufloat(6431, 48),       # K
-            "logg": ufloat(4.47, 0.13),     # cm/s2 (= log g)
-            "M_H": ufloat(0.11, 0.08),      # dex (= M/H)
-            "vturb": None}                  # km/s
-    star = {"Teff": ufloat(8000, 80),       # K
-            "logg": ufloat(3.9, 0.20),      # cm/s2 (= log g)
-            "M_H": ufloat(0.29, 0.13),      # dex (= M/H)
-            "vturb": ufloat(2.7, 0.3)}      # km/s"""
-
-    RF_list = ["cheops_response_function.dat", ]
-
-    # TWI computation
-    savefile = "results/LD_coefficients_TWI.txt"
-    RF_list = ["TWI/Bessel_B_bandpass_transmission.dat",
-               "cheops_response_function.dat",
-               "TWI/NGTS_bandpass_transmission.dat",
-               "TWI/PanSTARRS_zs_bandpass_transmission.dat",
-               "TESS_response_function_v2.0.dat"]
-    star = {"Teff": ufloat(4734, 40),       # K
-            "logg": ufloat(4.60, 0.06),     # cm/s2 (= log g)
-            "M_H": ufloat(0.05, 0.08),      # dex (= M/H)
-            "vturb": ufloat(0.47, 0.31)}    # km/s
-    """# ALE computation
-    savefile = "results/LD_coefficients_ALE.txt"
-    RF_list = ["TESS_response_function_v2.0.dat", ]
-    star = {"Teff": ufloat(5767, 127.443),       # K
-            "logg": ufloat(4.47047, 0.076629),     # cm/s2 (= log g)
-            "M_H": ufloat(-.14, .29),      # dex (= M/H)
-            "vturb": None}                  # km/s"""
-
-    if savefile and os.path.exists(savefile):
-        raise FileExistsError("file '{}' already exists !".format(savefile))
-
-    # number of sample should be typically n ~ 1000
-    ldc = get_lds_with_errors(**star, nsig=4, nsamples=2000, RF=RF_list)
-
-    if print_result or savefile:
-        header = get_header(**star)
-        summary = get_summary(ldc)
-        if print_result:
-            print(summary)
-        if savefile:
-            if os.path.exists(savefile):
-                raise FileExistsError("file '{}' already exists !"
-                                      .format(savefile))
-            with open(savefile, "w") as f:
-                f.write(header + summary)
