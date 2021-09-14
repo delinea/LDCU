@@ -35,12 +35,14 @@ PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -3.0, -4.0]
 
 def wget_downloader(url, filename=None, verbose=False):
     if filename is None:
-        cmd = "wget {}".format(url)
+        cmd = "wget '{}'".format(url)
+        filename = os.path.basename(url)
     else:
         dirname = os.path.dirname(filename)
-        if not os.path.isdir(dirname):
-            os.makedirs(dirname)
-        cmd = "wget {} -O {}".format(url, filename)
+        if len(dirname) > 0:
+            if not os.path.isdir(dirname):
+                os.makedirs(dirname)
+        cmd = "wget '{}' -O '{}'".format(url, filename)
     if not verbose:
         cmd += " -q"
     try:
@@ -56,12 +58,14 @@ def wget_downloader(url, filename=None, verbose=False):
 
 def curl_downloader(url, filename=None, verbose=False):
     if filename is None:
-        cmd = "curl {} -O".format(url)
+        cmd = "curl '{}' -O".format(url)
+        filename = os.path.basename(url)
     else:
         dirname = os.path.dirname(filename)
-        if not os.path.isdir(dirname):
-            os.makedirs(dirname)
-        cmd = "curl {} -o {}".format(url, filename)
+        if len(dirname) > 0:
+            if not os.path.isdir(dirname):
+                os.makedirs(dirname)
+        cmd = "curl '{}' -o '{}'".format(url, filename)
     if not verbose:
         cmd += " -s"
     try:
