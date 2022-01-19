@@ -29,7 +29,7 @@ star = {"Teff": ufloat(5261, 60),       # K
         "vturb": None}                  # km/s
 
 # list of response functions (pass bands) to be used
-RF_list = ["cheops_response_function.dat", ]
+RF_list = ["CHEOPS_response_function.dat", ]
 
 # name of the file in which the LD coefficients are written
 savefile = "results/my_results.txt"
