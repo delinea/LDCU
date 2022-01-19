@@ -25,12 +25,14 @@ ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
 ATLAS_Z = [-0.1, -0.2, -0.3, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0,
            -4.5, -5.0, 0.0, 0.1, 0.2, 0.3, 0.5, 1.0]
 PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_models")
-PHOENIX_WEBSITE = ("ftp://phoenix.astro.physik.uni-goettingen.de/"
+PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v1.0/"
                    "SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
 PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -3.0, -4.0]
 # PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_v3_models")
 # PHOENIX_WEBSITE = ("ftp://phoenix.astro.physik.uni-goettingen.de/"
 #                     "v3.0/SpecIntFITS/")
+# PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v3.0/"
+#                    "SpecIntFITS/")
 # PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -2.5, -3.0, -4.0]
 
 
@@ -270,12 +272,9 @@ def update_phoenix_grid():
     website_list = [str(line, "utf-8") for line in website.readlines()]
     z_list = []
     for line in website_list:
-        if "Z+" in line:
-            idx = line.index("Z+")
-        elif "Z-" in line:
-            idx = line.index("Z-")
-        else:
+        if ">Z" not in line:
             continue
+        idx = line.index(">Z") + 1
         z_list.append(line[idx: idx+5].strip())
     assert(len(set(z_list)) == len(z_list))
     phoenix_grid = {}
@@ -284,28 +283,20 @@ def update_phoenix_grid():
         website_z = urlrequest.urlopen(PHOENIX_WEBSITE+z)
         website_z_list = [str(line, "utf-8") for line in website_z.readlines()]
         for i_line, line in enumerate(website_z_list):
-            if (".fits" not in line) or ("lte" not in line):
+            if (">lte" not in line) or (".fits" not in line):
                 continue
-            if ">lte" in line:
-                line = line[line.index(">lte") + 1:]
-                idx = line.index(".fits") + 5
-                filename = line[:idx]
-                line = website_z_list[i_line - 1]
-                line = line[line.index(">") + 1:]
-                idx = line.index("<")
-                filesize = np.uint32(line[:idx])
-            else:
-                line_split = line.split()
-                assert len(line_split) == 9
-                filesize = np.uint32(line_split[4])
-                filename = line_split[8]
-                if not filename.startswith("lte"):
-                    continue
+            line_split = line.split()
+            assert len(line_split) == 10
+            filesize = np.uint32(line_split[4])
+            filename = line_split[9]
+            filename = filename[filename.index(">lte") + 1:]
+            filename = filename[:filename.index(".fits") + 5]
             teff = np.uint16(filename[3:8])
             logg = np.float32(filename[9:13])
             z_ = np.float32(filename[13:17])
             assert z_ == np.float32(z[1:])
             url = PHOENIX_WEBSITE+z+"/"+filename
+            assert(url not in phoenix_grid)
             phoenix_grid[url] = (teff, logg, z_, np.float32(2), filesize)
 
     def filename_from_url(url, sub_dir):
