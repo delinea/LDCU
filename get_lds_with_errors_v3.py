@@ -10,7 +10,8 @@ from uncertainties import ufloat, core as ucore
 from scipy.special import erf
 from scipy.optimize import root_scalar
 from scipy.interpolate import UnivariateSpline, LinearNDInterpolator
-from urllib.request import urlopen
+import urllib.request as urlrequest
+import warnings
 
 import get_lds as lds
 
@@ -90,7 +91,8 @@ else:
 
 
 def update_atlas_grid(force_download=False, remove_downloaded=False):
-    website = urlopen(ATLAS_WEBSITE)
+    website = urlrequest.urlopen(ATLAS_WEBSITE)
+    assert(isinstance(website, urlrequest.http.client.HTTPResponse))
     website_list = [str(line, "utf-8") for line in website.readlines()]
     z_list = []
     for line in website_list:
@@ -103,7 +105,8 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     atlas_pck = {}
     for z in tqdm.tqdm(z_list, desc="Querying ATLAS website",
                        dynamic_ncols=True):
-        website_z = urlopen(ATLAS_WEBSITE+z)
+        website_z = urlrequest.urlopen(ATLAS_WEBSITE+z)
+        assert(isinstance(website_z, urlrequest.http.client.HTTPResponse))
         website_z_list = [str(line, "utf-8") for line in website_z.readlines()]
         for line in website_z_list:
             fid = "i{}k".format(z[4:-1])
@@ -263,28 +266,41 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
 
 
 def update_phoenix_grid():
-    website = urlopen(PHOENIX_WEBSITE)
+    website = urlrequest.urlopen(PHOENIX_WEBSITE)
     website_list = [str(line, "utf-8") for line in website.readlines()]
     z_list = []
     for line in website_list:
-        if "Z" not in line:
+        if "Z+" in line:
+            idx = line.index("Z+")
+        elif "Z-" in line:
+            idx = line.index("Z-")
+        else:
             continue
-        idx = line.index('Z')
-        z_list.append(line[idx:].strip())
+        z_list.append(line[idx: idx+5].strip())
+    assert(len(set(z_list)) == len(z_list))
     phoenix_grid = {}
     for z in tqdm.tqdm(z_list, desc="Querying PHOENIX website",
                        dynamic_ncols=True):
-        website_z = urlopen(PHOENIX_WEBSITE+z)
+        website_z = urlrequest.urlopen(PHOENIX_WEBSITE+z)
         website_z_list = [str(line, "utf-8") for line in website_z.readlines()]
-        for line in website_z_list:
+        for i_line, line in enumerate(website_z_list):
             if (".fits" not in line) or ("lte" not in line):
                 continue
-            line_split = line.split()
-            assert len(line_split) == 9
-            filesize = np.uint32(line_split[4])
-            filename = line_split[8]
-            if not filename.startswith("lte"):
-                continue
+            if ">lte" in line:
+                line = line[line.index(">lte") + 1:]
+                idx = line.index(".fits") + 5
+                filename = line[:idx]
+                line = website_z_list[i_line - 1]
+                line = line[line.index(">") + 1:]
+                idx = line.index("<")
+                filesize = np.uint32(line[:idx])
+            else:
+                line_split = line.split()
+                assert len(line_split) == 9
+                filesize = np.uint32(line_split[4])
+                filename = line_split[8]
+                if not filename.startswith("lte"):
+                    continue
             teff = np.uint16(filename[3:8])
             logg = np.float32(filename[9:13])
             z_ = np.float32(filename[13:17])
@@ -351,7 +367,7 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
             raise FileNotFoundError("{} grid file could not be found: "
                                     "'update_{}_grid()' must be called first"
                                     .format(name, name.lower()))
-    subgrid = {}
+    subgrids = {}
     for name, pkl_fn in pkl_fns.items():
         with tarfile.open(pkl_fn+".tar.gz") as tar:
             tar.extractall(os.path.dirname(pkl_fn))
@@ -374,8 +390,9 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
         for kw in grid:
             if kw not in sg:
                 sg[kw] = grid[kw][idx]
-        subgrid[name] = sg
-    return(subgrid)
+        subgrids[name] = sg
+
+    return(subgrids)
 
 
 def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
@@ -676,6 +693,7 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
             assert np.all(np.isfinite(PHOENIX_I[RF][FT]))
 
     # creating interpolators
+    # TODO: to be implemented with scipy.interpolate.RBFInterpolator
     intensities = {}
     for RF in RF_list:
         intensities[RF] = {}
@@ -991,11 +1009,15 @@ def get_summary(ldc, fmt="8.6f"):
     return text
 
 
-def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
-                        nsamples=1000, RF="cheops_response_function.dat",
+def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
+                        RF="cheops_response_function.dat",
+                        nsig=4, nsamples=2000, max_bad_points=0.30,
                         overwrite_pck=False):
     if vturb is None:
         vturb = ufloat(2, .5)
+        warnings.warn("Microturbulent velocity 'vturb' not specified: "
+                      "set to default value 2.0+/-0.5 km/s.",
+                      UserWarning)
     for par in [Teff, logg, M_H, vturb]:
         if type(par) is not ucore.Variable:
             raise ValueError("input stellar parameters must all be of type "
@@ -1009,6 +1031,7 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
               "logg": (logg.n-nsig*logg.s, logg.n+nsig*logg.s),
               "M_H": (M_H.n-nsig*M_H.s, M_H.n+nsig*M_H.s),
               "vturb": (max(0, vturb.n-nsig*vturb.s), vturb.n+nsig*vturb.s)}
+
     download_files(**bounds)
     subgrids = get_subgrids(**bounds)
 
@@ -1056,6 +1079,21 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None, nsig=4,
                 mu = lndi_mu(vals[:, :-1])
                 I = lndi_I(vals[:, :-1])
             idx = np.isfinite(mu) & np.isfinite(I)
+            bad_points = 1-np.sum(idx)/np.size(idx)
+            if bad_points > 0:
+                lib_name = "ATLAS" if FT.startswith("A") else "PHOENIX"
+                txt = (" stellar parameter distribution"
+                       " falls outside the interpolation range"
+                       " covered by the {} library!".format(lib_name))
+                txt_err = " (setting 'vturb = None' may solve this issue)"
+                if bad_points == 1:
+                    raise RuntimeError("The whole" + txt + txt_err)
+                elif bad_points > max_bad_points:
+                    raise RuntimeError("{:.1f} % of the".format(bad_points*100)
+                                       + txt + txt_err)
+                elif bad_points > 0:
+                    warnings.warn("{:.1f} % of the".format(bad_points*100)
+                                  + txt)
             mu = mu[idx]
             I = I[idx]
             idx = np.argsort(mu)
