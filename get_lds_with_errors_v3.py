@@ -27,13 +27,9 @@ ATLAS_Z = [-0.1, -0.2, -0.3, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0,
 PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_models")
 PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v1.0/"
                    "SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
-PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -3.0, -4.0]
 # PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_v3_models")
-# PHOENIX_WEBSITE = ("ftp://phoenix.astro.physik.uni-goettingen.de/"
-#                     "v3.0/SpecIntFITS/")
 # PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v3.0/"
 #                    "SpecIntFITS/")
-# PHOENIX_Z = [-0.0, -0.5, +0.5, -1.0, +1.0, -1.5, -2.0, -2.5, -3.0, -4.0]
 
 
 def wget_downloader(url, filename=None, verbose=False):
