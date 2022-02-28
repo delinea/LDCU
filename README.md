@@ -23,16 +23,17 @@ from uncertainties import ufloat
 import get_lds_with_errors_v3 as glds
 
 # create a dict with your input stellar parameters
-star = {"Teff": ufloat(5261, 60),       # K
-        "logg": ufloat(4.47, 0.05),     # cm/s2 (= log g)
-        "M_H": ufloat(0.04, 0.05),      # dex (= M/H)
+star = {"Name": "55 Cnc",
+        "Teff": ufloat(5172, 18),       # K
+        "logg": ufloat(4.43, 0.02),     # cm/s2 (= log g)
+        "M_H": ufloat(0.35, 0.10),      # dex (= M/H)
         "vturb": None}                  # km/s
 
 # list of response functions (pass bands) to be used
 RF_list = ["CHEOPS_response_function.dat", ]
 
 # name of the file in which the LD coefficients are written
-savefile = "results/my_results.txt"
+savefile = "results/{}.txt".format(star.pop("Name", "my_results"))
 if os.path.exists(savefile):
     raise FileExistsError("file '{}' already exists !".format(savefile))
 
@@ -51,10 +52,8 @@ print(summary)
 if savefile:
     with open(savefile, "w") as f:
         f.write(header + summary)
-
 ```
 
 ### Future developments
-- code documentation !!
-- MCMC fit of the intensity profiles
-- partial rewriting: wrap in a Python Class, store intermediate products, provide log_likelihood option
+- Documentation !!
+- LD log-likelihood

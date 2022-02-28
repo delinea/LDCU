@@ -755,6 +755,7 @@ def get_all_ldc(mu, I, Ierr=None, mu_min=None, mcmc=False):
         ld_coeffs = {"linear": lds.fit_linear(*params),
                      "square-root": lds.fit_square_root(*params),
                      "quadratic": lds.fit_quadratic(*params),
+                     "kipping": lds.fit_kipping2013(*params),
                      "three-parameter": lds.fit_three_parameter(*params),
                      "non-linear": lds.fit_non_linear(*params),
                      "logarithmic": lds.fit_logarithmic(*params),
@@ -787,6 +788,16 @@ def log_prob_quadratic(ldc, mu, I, Ierr=None):
     if np.sum(ldc) > 1 or ldc[0]+2*ldc[1] < 0 or ldc[0] < 0:
         return -np.inf
     model = 1-ldc[0]*(1-mu)-ldc[1]*(1-mu)**2
+    return -.5*np.sum(np.log(2*np.pi*Ierr**2)+((I-model)/Ierr)**2)
+
+
+def log_prob_kipping(ldc, mu, I, Ierr=None):
+    assert hasattr(ldc, "__iter__") and len(ldc) == 2
+    if ldc[0] < 0 or ldc[1] < 0 or ldc[0] > 1 or ldc[1] > 1:
+        return -np.inf
+    u1 = 2*np.sqrt(ldc[0])*ldc[1]
+    u2 = np.sqrt(ldc[0])*(1-2*ldc[1])
+    model = 1-u1*(1-mu)-u2*(1-mu)**2
     return -.5*np.sum(np.log(2*np.pi*Ierr**2)+((I-model)/Ierr)**2)
 
 
@@ -889,6 +900,9 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
              "#   I(mu)/I(1) = 1 - s1 * (1 - mu) - s2 * (1 - mu^(1/2))\n"
              "#\n# Quadratic law:\n"
              "#   I(mu)/I(1) = 1 - u1 * (1 - mu) - u2 * (1 - mu)^2\n"
+             "#\n# Quadratic law (Kipping 2013):\n"
+             "#   I(mu)/I(1) = 1 - 2*sqrt(q1)*q2 * (1 - mu) "
+             "- sqrt(q1)*(1-2*q2) * (1 - mu)^2\n"
              "#\n# Three-parameter law:\n"
              "#   I(mu)/I(1) = 1 - b1 * (1 - mu) - b2 * (1 - mu^(3/2)) "
              "- b3 * (1 - mu^2)\n"
@@ -966,7 +980,10 @@ def get_summary(ldc, fmt="8.6f"):
         text += "\n>> RF file: '{}' <<".format(RF)
         for ldm in ldc_rf:
             ldc_ldm = ldc_rf[ldm]
-            text += "\n\nLD {} law:".format(ldm)
+            if ldm == "kipping":
+                text += "\n\nLD quadratic law (Kipping 2013):"
+            else:
+                text += "\n\nLD {} law:".format(ldm)
             for FT in ldc_ldm:
                 text += "\n >> {:8}:".format(FT)
                 ldc_ft = ldc_ldm[FT]

@@ -259,6 +259,37 @@ def fit_quadratic(mu, I, Ierr=None):
     return ld_coeffs
 
 
+def fit_kipping2013(mu, I, Ierr=None):
+    """
+    Calculate the coefficients for the quadratic LD law
+    using the q parametrization.
+    It assumes input intensities are normalized.
+    Least-squares solutions described in Espinoza & Jordan (2015) were
+    replaced by a least-square curve fit returning coefficient
+    uncertainties.
+
+    INPUTS:
+      mu:   Angles at which each intensity is calculated (numpy array).
+      I:    Normalized intensities (i.e., I(mu)/I(1)) (numpy array).
+      Ierr: Error/uncertinaties on the intensity values (numpy array).
+
+    OUTPUTS:
+      q1:   First coefficient of the quadratic law (Kipping 2013).
+      q2:   Second coefficient of the quadratic law (Kipping 2013).
+    """
+    def func(m, *coeffs):
+        q1, q2 = coeffs
+        u1 = 2*np.sqrt(q1)*q2
+        u2 = np.sqrt(q1)*(1-2*q2)
+        return 1.0-u1*(1.0-m)-u2*(1.0-m)**2
+    p0 = [.5, .2]
+    bounds = ((0, 0), (1, 1))
+    popt, pcov = curve_fit(func, mu, I, sigma=Ierr, p0=p0, bounds=bounds)
+    psig = np.sqrt(np.diag(pcov))
+    ld_coeffs = [ufloat(p, psig[i]) for i, p in enumerate(popt)]
+    return ld_coeffs
+
+
 def fit_three_parameter(mu, I, Ierr=None):
     """
     Calculate the coefficients for the three-parameter LD law.
