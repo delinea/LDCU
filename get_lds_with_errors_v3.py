@@ -1082,7 +1082,7 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
             elif FT.startswith("P"):
                 mu = lndi_mu(vals[:, :-1])
                 I = lndi_I(vals[:, :-1])
-            idx = np.isfinite(mu) & np.isfinite(I)
+            idx = np.isfinite(mu) & np.isfinite(I) & (I >= 0)
             bad_points = 1-np.sum(idx)/np.size(idx)
             if bad_points > 0:
                 lib_name = "ATLAS" if FT.startswith("A") else "PHOENIX"
@@ -1090,14 +1090,14 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
                        " falls outside the interpolation range"
                        " covered by the {} library!".format(lib_name))
                 txt_err = " (setting 'vturb = None' may solve this issue)"
-                if bad_points == 1:
-                    raise RuntimeError("The whole" + txt + txt_err)
-                elif bad_points > max_bad_points:
+                if bad_points > max_bad_points:
                     raise RuntimeError("{:.1f} % of the".format(bad_points*100)
                                        + txt + txt_err)
                 elif bad_points > 0:
                     warnings.warn("{:.1f} % of the".format(bad_points*100)
                                   + txt)
+            if bad_points == 1:
+                continue
             mu = mu[idx]
             I = I[idx]
             idx = np.argsort(mu)
@@ -1121,7 +1121,10 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
             for FT in FT_merged:
                 ldc_FT = []
                 for i in range(n_ldc):
-                    distribs = [ldc_ldm[FT_][i] for FT_ in FT_merged[FT]]
+                    distribs = [ldc_ldm[FT_][i] for FT_ in FT_merged[FT]
+                                if FT_ in ldc_ldm]
+                    if len(distribs) <= 1:
+                        continue
                     ldc_FT.append(merge_distrib(distribs))
                     continue
                     plt.figure()
