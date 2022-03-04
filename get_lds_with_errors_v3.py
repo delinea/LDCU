@@ -12,6 +12,7 @@ from scipy.optimize import root_scalar
 from scipy.interpolate import UnivariateSpline, LinearNDInterpolator
 import urllib.request as urlrequest
 import warnings
+from scipy.spatial.qhull import QhullError
 
 import get_lds as lds
 
@@ -685,12 +686,32 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
     for RF in RF_list:
         intensities[RF] = {}
         for FT in ATLAS_mu:
-            lndi_I = LinearNDInterpolator(points["ATLAS"], ATLAS_I[RF][FT])
+            try:
+                lndi_I = LinearNDInterpolator(points["ATLAS"], ATLAS_I[RF][FT])
+            except QhullError:
+                warnings.warn("Interpolation issue with ATLAS {} profiles. "
+                              "This might be due to stellar parameters being "
+                              "too close or beyond the limits covered by the "
+                              "ATLAS library. Limb-darkening parameters will "
+                              "not be derived."
+                              .format(FT))
+                lndi_I = None
             intensities[RF][FT] = (ATLAS_mu[FT], lndi_I)
         for FT in PHOENIX_mu[RF]:
             phoenix_points = points["PHOENIX"][:, :-1]  # removing vturb
-            lndi_mu = LinearNDInterpolator(phoenix_points, PHOENIX_mu[RF][FT])
-            lndi_I = LinearNDInterpolator(phoenix_points, PHOENIX_I[RF][FT])
+            try:
+                lndi_mu = LinearNDInterpolator(phoenix_points,
+                                               PHOENIX_mu[RF][FT])
+                lndi_I = LinearNDInterpolator(phoenix_points,
+                                              PHOENIX_I[RF][FT])
+            except QhullError:
+                warnings.warn("Interpolation issue with ATLAS {} profiles. "
+                              "This might be due to stellar parameters being "
+                              "too close or beyond the limits covered by the "
+                              "ATLAS library. Limb-darkening parameters will "
+                              "not be derived."
+                              .format(FT))
+                lndi_mu, lndi_I = None, None
             intensities[RF][FT] = (lndi_mu, lndi_I)
 
     # returning single value if input RF in not a list
@@ -1075,6 +1096,8 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
         ldc_RF = {}
         for FT in ip_interp[RF]:
             lndi_mu, lndi_I = ip_interp[RF][FT]
+            if lndi_I is None:
+                continue
             if FT.startswith("A"):
                 mu = lndi_mu
                 I = lndi_I(vals)
