@@ -885,6 +885,7 @@ def PHOENIX_model_search(s_met, s_grav, s_teff, s_vturb, verbose=True,
 def get_response(min_w, max_w, response_function, verbose=True):
     root = os.path.join(ROOTDIR, "response_functions")
     # Standard response functions:
+    user_defined = False
     if response_function.lower() == 'kphires':
         response_file = os.path.join(root, "standard",
                                      "kepler_response_hires1.txt")
@@ -902,6 +903,7 @@ def get_response(min_w, max_w, response_function, verbose=True):
                                      "WFC3_response_function.txt")
     # User-defined response functions:
     else:
+        user_defined = True
         if os.path.exists(os.path.join(root, response_function)):
             response_file = os.path.join(root, response_function)
         elif os.path.exists(response_function):  # RF not in RF folder:
@@ -913,7 +915,7 @@ def get_response(min_w, max_w, response_function, verbose=True):
     # Open the response file, which we assume has as first column wavelength
     # and second column the response:
     w, r = np.loadtxt(response_file, unpack=True)
-    if('kepler' in response_file):
+    if('kepler' in response_file) and not user_defined:
         w = 10*w
         if min_w is None:
             min_w = min(w)
@@ -924,7 +926,7 @@ def get_response(min_w, max_w, response_function, verbose=True):
                   'nanometers to Angstroms.')
             print('\t > Minimum wavelength: {} A.\n'
                   '\t > Maximum wavelength: {} A.'.format(min(w), max(w)))
-    elif('IRAC' in response_file):
+    elif('IRAC' in response_file) and not user_defined:
         w = 1e4*w
         if min_w is None:
             min_w = min(w)
@@ -1015,9 +1017,9 @@ def read_PHOENIX(chosen_path):
     return wavelengths, I, mu
 
 
-def integrate_response_ATLAS(wavelengths, I, mu, S_res, S_wav,
-                             atlas_correction, photon_correction,
-                             interpolation_order):
+def integrate_response_ATLAS_OLD(wavelengths, I, mu, S_res, S_wav,
+                                 atlas_correction, photon_correction,
+                                 interpolation_order):
     # Define the number of mu angles at which we will perform the integrations:
     nmus = len(mu)
 
@@ -1025,7 +1027,7 @@ def integrate_response_ATLAS(wavelengths, I, mu, S_res, S_wav,
     I_l = np.array([])
     for i in range(nmus):
         # Interpolate the intensities:
-        Ifunc = si.UnivariateSpline(wavelengths, I[:, i], s=0,
+        Ifunc = si.UnivariateSpline(wavelengths, I[:, i], s=0, ext="raise",
                                     k=interpolation_order)
         # If several wavelength ranges where given, integrate through
         # each chunk one at a time.  If not, integrate the given chunk:
@@ -1039,7 +1041,7 @@ def integrate_response_ATLAS(wavelengths, I, mu, S_res, S_wav,
                 elif not atlas_correction and photon_correction:
                     integrand = (S_res[j]*Ifunc(S_wav[j])) * (S_wav[j])
                 else:
-                    integrand = S_res[j]*Ifunc(S_wav[j])*S_wav[j]
+                    integrand = S_res[j]*Ifunc(S_wav[j])
                 integration_results += np.trapz(integrand, x=S_wav[j])
         else:
             if atlas_correction and photon_correction:
@@ -1058,11 +1060,11 @@ def integrate_response_ATLAS(wavelengths, I, mu, S_res, S_wav,
     return I0
 
 
-def integrate_response_PHOENIX(wavelengths, I, mu, S_res, S_wav, correction,
-                               interpolation_order):
+def integrate_response_PHOENIX_OLD(wavelengths, I, mu, S_res, S_wav,
+                                   correction, interpolation_order):
     I_l = np.array([])
     for i in range(len(mu)):
-        Ifunc = si.UnivariateSpline(wavelengths, I[:, i], s=0,
+        Ifunc = si.UnivariateSpline(wavelengths, I[:, i], s=0, ext="raise",
                                     k=interpolation_order)
         if type(S_res) is list:
             integration_results = 0.0
@@ -1080,6 +1082,56 @@ def integrate_response_PHOENIX(wavelengths, I, mu, S_res, S_wav, correction,
             # Integral of Intensity_nu*(Response Function*lambda)*c/lambda**2
             integration_results = np.trapz(integrand, x=S_wav)
         I_l = np.append(I_l, integration_results)
+
+    return I_l/(I_l[-1])
+
+
+def integrate_response_ATLAS(wavelengths, I, mu, S_res, S_wav,
+                             atlas_correction, photon_correction,
+                             interpolation_order):
+    nmus = len(mu)
+    I_l = np.full(nmus, np.nan)
+    wl_all = np.append(wavelengths, S_wav)
+    idx_sort = np.argsort(wl_all)
+    wl_all = wl_all[idx_sort]
+    S_res_func = si.UnivariateSpline(S_wav, S_res, s=0, ext="zeros",
+                                     k=interpolation_order)
+    S_res_all = np.append(S_res_func(wavelengths), S_res)[idx_sort]
+    for i in range(nmus):
+        I_func = si.UnivariateSpline(wavelengths, I[:, i], s=0, ext="raise",
+                                     k=interpolation_order)
+        I_all = np.append(I[:, i], I_func(S_wav))[idx_sort]
+        integrand = S_res_all * I_all
+        if atlas_correction and photon_correction:
+            integrand /= wl_all
+        elif atlas_correction and not photon_correction:
+            integrand /= wl_all**2
+        elif not atlas_correction and photon_correction:
+            integrand *= wl_all
+        I_l[i] = np.trapz(integrand, x=wl_all)
+    I0 = I_l/(I_l[0])
+
+    return I0
+
+
+def integrate_response_PHOENIX(wavelengths, I, mu, S_res, S_wav, correction,
+                               interpolation_order):
+    nmus = len(mu)
+    I_l = np.full(nmus, np.nan)
+    wl_all = np.append(wavelengths, S_wav)
+    idx_sort = np.argsort(wl_all)
+    wl_all = wl_all[idx_sort]
+    S_res_func = si.UnivariateSpline(S_wav, S_res, s=0, ext="zeros",
+                                     k=interpolation_order)
+    S_res_all = np.append(S_res_func(wavelengths), S_res)[idx_sort]
+    for i in range(nmus):
+        I_func = si.UnivariateSpline(wavelengths, I[:, i], s=0, ext="raise",
+                                     k=interpolation_order)
+        I_all = np.append(I[:, i], I_func(S_wav))[idx_sort]
+        integrand = S_res_all * I_all
+        if correction:
+            integrand *= wl_all
+        I_l[i] = np.trapz(integrand, x=wl_all)
 
     return I_l/(I_l[-1])
 

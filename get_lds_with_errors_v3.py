@@ -17,20 +17,28 @@ from scipy.spatial.qhull import QhullError
 import get_lds as lds
 
 
-VERSION = 'v.1.1.deline'
+VERSION = 'v.1.2.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
+# ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
 ATLAS_Z = [-0.1, -0.2, -0.3, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0,
            -4.5, -5.0, 0.0, 0.1, 0.2, 0.3, 0.5, 1.0]
-PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_models")
-PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v1.0/"
-                   "SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
-# PHOENIX_DIR = os.path.join(ROOTDIR, "phoenix_v3_models")
-# PHOENIX_WEBSITE = ("http://phoenix.astro.physik.uni-goettingen.de/data/v3.0/"
-#                    "SpecIntFITS/")
+PHOENIX_WEBSITE_ROOT = "http://phoenix.astro.physik.uni-goettingen.de/data/"
+PHOENIX_DEFAULT = ("phoenix_models",
+                   "v1.0/SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
+PHOENIX_EXTENDED = ("phoenix_v3_models", "v3.0/SpecIntFITS/")
+PHOENIX_EXTENDED_LIGHT = ("phoenix_v3Light_models", "v3.0/SpecInt50FITS/")
+PHOENIX_LIBRARIES = {"DEFAULT": PHOENIX_DEFAULT,
+                     "EXTENDED": PHOENIX_EXTENDED,
+                     "EXTENDED_LIGHT": PHOENIX_EXTENDED_LIGHT}
+PHOENIX_VERSION = "EXTENDED_LIGHT"
+PHOENIX_DIR = os.path.join(ROOTDIR, PHOENIX_LIBRARIES[PHOENIX_VERSION][0])
+PHOENIX_WEBSITE = PHOENIX_WEBSITE_ROOT + PHOENIX_LIBRARIES[PHOENIX_VERSION][1]
+
+COMPRESS_DATA = True
 
 
 def wget_downloader(url, filename=None, verbose=False):
@@ -185,10 +193,13 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
             lines = f.readlines()
         if remove_downloaded and url in pck_list.keys():
             pass
-        elif not os.path.isfile(fn+".tar.gz"):
-            with tarfile.open(fn+".tar.gz", "w:gz") as tar:
-                tar.add(fn, os.path.basename(fn))
-        os.remove(fn)
+        elif COMPRESS_DATA:
+            if not os.path.isfile(fn+".tar.gz"):
+                with tarfile.open(fn+".tar.gz", "w:gz") as tar:
+                    tar.add(fn, os.path.basename(fn))
+            os.remove(fn)
+        elif os.path.isfile(fn+".tar.gz"):
+            os.remove(fn+".tar.gz")
         zv = os.path.basename(url)[1:6]
         if zv[0] == "p":
             z_ref = np.float32(0.1*int(zv[1:3]))
@@ -259,9 +270,12 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     pkl_fn = os.path.join(ATLAS_DIR, "atlas_grid.pkl")
     with open(pkl_fn, "wb") as f:
         pickle.dump(atlas_grid, f)
-    with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
-        tar.add(pkl_fn, os.path.basename(pkl_fn))
-    os.remove(pkl_fn)
+    if COMPRESS_DATA:
+        with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
+            tar.add(pkl_fn, os.path.basename(pkl_fn))
+        os.remove(pkl_fn)
+    elif os.path.isfile(pkl_fn+".tar.gz"):
+        os.remove(pkl_fn+".tar.gz")
 
 
 def update_phoenix_grid():
@@ -340,9 +354,12 @@ def update_phoenix_grid():
     pkl_fn = os.path.join(PHOENIX_DIR, "phoenix_grid.pkl")
     with open(pkl_fn, "wb") as f:
         pickle.dump(phoenix_grid, f)
-    with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
-        tar.add(pkl_fn, os.path.basename(pkl_fn))
-    os.remove(pkl_fn)
+    if COMPRESS_DATA:
+        with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
+            tar.add(pkl_fn, os.path.basename(pkl_fn))
+        os.remove(pkl_fn)
+    elif os.path.isfile(pkl_fn+".tar.gz"):
+        os.remove(pkl_fn+".tar.gz")
 
 
 def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
@@ -357,11 +374,15 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                                     .format(name, name.lower()))
     subgrids = {}
     for name, pkl_fn in pkl_fns.items():
-        with tarfile.open(pkl_fn+".tar.gz") as tar:
-            tar.extractall(os.path.dirname(pkl_fn))
+        if not os.path.isfile(pkl_fn):
+            with tarfile.open(pkl_fn+".tar.gz") as tar:
+                tar.extractall(os.path.dirname(pkl_fn))
         with open(pkl_fn, "rb") as f:
             grid = pickle.load(f)
-        os.remove(pkl_fn)
+        if COMPRESS_DATA:
+            os.remove(pkl_fn)
+        elif os.path.isfile(pkl_fn+".tar.gz"):
+            os.remove(pkl_fn+".tar.gz")
         sg = {}
         idx = []
         for pn in bounds:
@@ -420,9 +441,10 @@ def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                                               desc="Downloading files",
                                               dynamic_ncols=True), ofns):
                     downloader(url, ofn)
-                    with tarfile.open(ofn+".tar.gz", "w:gz") as tar:
-                        tar.add(ofn, arcname=os.path.basename(ofn))
-                    os.remove(ofn)
+                    if COMPRESS_DATA:
+                        with tarfile.open(ofn+".tar.gz", "w:gz") as tar:
+                            tar.add(ofn, arcname=os.path.basename(ofn))
+                        os.remove(ofn)
                 break
 
 
@@ -489,11 +511,14 @@ def extract_atlas_pck(pck_file, overwrite=True):
                     f.write(s+"\n")
         if to_be_saved:
             f.close()
-        if overwrite or not os.path.isfile(tarname):
-            with tarfile.open(tarname, "w:gz") as tar:
-                tar.add(filename, os.path.basename(filename))
-        if os.path.isfile(filename):
-            os.remove(filename)
+        if COMPRESS_DATA:
+            if overwrite or not os.path.isfile(tarname):
+                with tarfile.open(tarname, "w:gz") as tar:
+                    tar.add(filename, os.path.basename(filename))
+            if os.path.isfile(filename):
+                os.remove(filename)
+        elif os.path.isfile(tarname):
+            os.remove(tarname)
         pbar.postfix[0]["rate"] = pbar.n/pbar.format_dict["elapsed"]
         pbar.update()
         if(i == len(lines)-1):
@@ -501,17 +526,20 @@ def extract_atlas_pck(pck_file, overwrite=True):
 
     pbar.close()
 
-    if not os.path.isfile(pck_tarfile):
-        with tarfile.open(pck_tarfile, "w:gz") as tar:
-            tar.add(pck_file, os.path.basename(pck_file))
-    os.remove(pck_file)
+    if COMPRESS_DATA:
+        if not os.path.isfile(pck_tarfile):
+            with tarfile.open(pck_tarfile, "w:gz") as tar:
+                tar.add(pck_file, os.path.basename(pck_file))
+        os.remove(pck_file)
+    elif os.path.isfile(pck_tarfile):
+        os.remove(pck_tarfile)
 
     return filenames
 
 
 def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                               atlas_correction=True, photon_correction=True,
-                              overwrite_pck=False):
+                              max_bad_RF=0.0, overwrite_pck=False):
     if type(RF) is str:
         RF_list = [RF, ]
         single_RF = True
@@ -580,10 +608,13 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
         else:
             raise RuntimeError("found multiple files '{}'".format(filename))
         wavelengths, I, mu = lds.read_ATLAS(filename, None)
-        if not os.path.isfile(tarname):
-            with tarfile.open(tarname, "w:gz") as tar:
-                tar.add(filename, os.path.basename(filename))
-        os.remove(filename)
+        if COMPRESS_DATA:
+            if not os.path.isfile(tarname):
+                with tarfile.open(tarname, "w:gz") as tar:
+                    tar.add(filename, os.path.basename(filename))
+            os.remove(filename)
+        elif os.path.isfile(tarname):
+            os.remove(tarname)
         mu100 = np.arange(1.0, 0.0, -0.01)
         I100 = np.full((len(I), len(mu100)), np.nan)
         for j, I_j in enumerate(I):
@@ -591,15 +622,35 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
         idx_AS = mu >= 0.05
         if i == 0:
             ATLAS_mu = {"A17": mu, "AS": mu[idx_AS], "A100": mu100}
-            I_RF = {FT: np.full((len(points["ATLAS"]), len(mu_)), np.nan)
-                    for FT, mu_ in ATLAS_mu.items()}
-            ATLAS_I = {RF: I_RF for RF in RF_list}
+            ATLAS_I = {RF: {FT: np.full((len(points["ATLAS"]), len(mu_)),
+                                        np.nan)
+                            for FT, mu_ in ATLAS_mu.items()} for RF in RF_list}
         args = (atlas_correction, photon_correction, interpolation_order)
         for RF in RF_list:
+            idx_ok = ((wl[RF] >= np.min(wavelengths))
+                      & (wl[RF] <= np.max(wavelengths)))
+            if not np.all(idx_ok):
+                if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
+                    if max_bad_RF == 0:
+                        raise ValueError("The response function ('{}') goes "
+                                         "beyond wavelength range ([{}, {}] "
+                                         "Angstroms) !"
+                                         .format(RF, np.min(wavelengths),
+                                                 np.max(wavelengths)))
+                    else:
+                        raise ValueError("More than {:.1f}% of the response "
+                                         "function ('{}') lies beyond "
+                                         "wavelength range ([{}, {}] "
+                                         "Angstroms) !"
+                                         .format(max_bad_RF*100, RF,
+                                                 np.min(wavelengths),
+                                                 np.max(wavelengths)))
+            S_ok = S[RF][idx_ok]
+            wl_ok = wl[RF][idx_ok]
             I0 = lds.integrate_response_ATLAS(wavelengths, I, mu,
-                                              S[RF], wl[RF], *args)
+                                              S_ok, wl_ok, *args)
             I0_100 = lds.integrate_response_ATLAS(wavelengths, I100, mu100,
-                                                  S[RF], wl[RF], *args)
+                                                  S_ok, wl_ok, *args)
             ATLAS_I[RF]["A17"][i] = I0
             ATLAS_I[RF]["AS"][i] = I0[idx_AS]
             ATLAS_I[RF]["A100"][i] = I0_100
@@ -611,8 +662,13 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
         tarname = filename+".tar.gz"
         if not os.path.isfile(filename):
             if os.path.isfile(tarname):
-                with tarfile.open(tarname) as tar:
-                    tar.extractall(os.path.dirname(tarname))
+                try:
+                    with tarfile.open(tarname) as tar:
+                        tar.extractall(os.path.dirname(tarname))
+                except EOFError:
+                    raise IOError("File {} looks corrupted. Please delete it "
+                                  "and run the code to download it again."
+                                  .format(tarname))
             else:
                 filenames = glob.glob(os.path.join(PHOENIX_DIR, "raw_models",
                                                    "*", filename))
@@ -625,11 +681,20 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                 else:
                     raise RuntimeError("found multiple files '{}'"
                                        .format(filename))
-        wavelengths, I, mu = lds.read_PHOENIX(filename)
-        if not os.path.isfile(tarname):
-            with tarfile.open(tarname, "w:gz") as tar:
-                tar.add(filename, os.path.basename(filename))
-        os.remove(filename)
+        try:
+            wavelengths, I, mu = lds.read_PHOENIX(filename)
+        except KeyError:
+            raise IOError("File {} looks corrupted. Please delete it and run "
+                          "the code to download it again.".format(filename))
+        except BaseException as e:
+            raise e
+        if COMPRESS_DATA:
+            if not os.path.isfile(tarname):
+                with tarfile.open(tarname, "w:gz") as tar:
+                    tar.add(filename, os.path.basename(filename))
+            os.remove(filename)
+        elif os.path.isfile(tarname):
+            os.remove(tarname)
         if i == 0:
             PHOENIX_sizes = {"P": len(mu), "PS": len(mu), "P100": 100}
             PHOENIX_mu = {RF: {FT: np.full((len(phoenix_filenames), n), np.nan)
@@ -639,7 +704,27 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                               for FT, n in PHOENIX_sizes.items()}
                          for RF in RF_list}
         for RF in RF_list:
-            args = (S[RF], wl[RF], photon_correction, interpolation_order)
+            idx_ok = ((wl[RF] >= np.min(wavelengths))
+                      & (wl[RF] <= np.max(wavelengths)))
+            if not np.all(idx_ok):
+                if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
+                    if max_bad_RF == 0:
+                        raise ValueError("The response function ('{}') goes "
+                                         "beyond wavelength range ([{}, {}] "
+                                         "Angstroms) !"
+                                         .format(RF, np.min(wavelengths),
+                                                 np.max(wavelengths)))
+                    else:
+                        raise ValueError("More than {:.1f}% of the response "
+                                         "function ('{}') lies beyond "
+                                         "wavelength range ([{}, {}] "
+                                         "Angstroms) !"
+                                         .format(max_bad_RF*100, RF,
+                                                 np.min(wavelengths),
+                                                 np.max(wavelengths)))
+            S_ok = S[RF][idx_ok]
+            wl_ok = wl[RF][idx_ok]
+            args = (S_ok, wl_ok, photon_correction, interpolation_order)
             I0 = lds.integrate_response_PHOENIX(wavelengths, I, mu, *args)
             r, fine_r_max = lds.get_rmax(mu, I0)
             new_r = r/fine_r_max
@@ -911,6 +996,8 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "toward the limb\n"
             "#   8) discard some erroneous metallicity values in the ATLAS PCK"
             " files\n"
+            "#   9) using PHOENIX library v3.0 that extends up to 5.5 "
+            "microns\n"
             "#\n" + 79*"#" + "\n")
     text = text.format(VERSION)
 
@@ -1037,7 +1124,7 @@ def get_summary(ldc, fmt="8.6f"):
 def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
                         RF="cheops_response_function.dat",
                         nsig=4, nsamples=2000, max_bad_points=0.30,
-                        overwrite_pck=False):
+                        max_bad_RF=0.0, overwrite_pck=False):
     if vturb is None:
         vturb = ufloat(2, .5)
         warnings.warn("Microturbulent velocity 'vturb' not specified: "
@@ -1064,6 +1151,7 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
                                           interpolation_order=1,
                                           atlas_correction=True,
                                           photon_correction=True,
+                                          max_bad_RF=max_bad_RF,
                                           overwrite_pck=overwrite_pck)
 
     # Drawing stellar parameters from normal distributions
