@@ -186,7 +186,26 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
         if not os.path.isfile(fn):
             if os.path.isfile(fn+".tar.gz"):
                 with tarfile.open(fn+".tar.gz") as tar:
-                    tar.extractall(os.path.dirname(fn))
+                    def is_within_directory(directory, target):
+                        
+                        abs_directory = os.path.abspath(directory)
+                        abs_target = os.path.abspath(target)
+                    
+                        prefix = os.path.commonprefix([abs_directory, abs_target])
+                        
+                        return prefix == abs_directory
+                    
+                    def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                    
+                        for member in tar.getmembers():
+                            member_path = os.path.join(path, member.name)
+                            if not is_within_directory(path, member_path):
+                                raise Exception("Attempted Path Traversal in Tar File")
+                    
+                        tar.extractall(path, members, numeric_owner=numeric_owner) 
+                        
+                    
+                    safe_extract(tar, os.path.dirname(fn))
             else:
                 raise FileNotFoundError("could not find '{}'".format(fn))
         with open(fn, "r") as f:
@@ -376,7 +395,26 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
     for name, pkl_fn in pkl_fns.items():
         if not os.path.isfile(pkl_fn):
             with tarfile.open(pkl_fn+".tar.gz") as tar:
-                tar.extractall(os.path.dirname(pkl_fn))
+                def is_within_directory(directory, target):
+                    
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    
+                    return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                
+                    tar.extractall(path, members, numeric_owner=numeric_owner) 
+                    
+                
+                safe_extract(tar, os.path.dirname(pkl_fn))
         with open(pkl_fn, "rb") as f:
             grid = pickle.load(f)
         if COMPRESS_DATA:
@@ -453,14 +491,52 @@ def extract_atlas_pck(pck_file, overwrite=True):
     if not os.path.isfile(pck_file):
         if os.path.isfile(pck_tarfile):
             with tarfile.open(pck_tarfile) as tar:
-                tar.extractall(os.path.dirname(pck_tarfile))
+                def is_within_directory(directory, target):
+                    
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    
+                    return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                
+                    tar.extractall(path, members, numeric_owner=numeric_owner) 
+                    
+                
+                safe_extract(tar, os.path.dirname(pck_tarfile))
         else:
             fn = os.path.join(ATLAS_DIR, "raw_models", pck_file)
             if os.path.isfile(fn):
                 pck_file = fn
             elif os.path.isfile(fn+".tar.gz"):
                 with tarfile.open(fn+".tar.gz") as tar:
-                    tar.extractall(os.path.dirname(fn))
+                    def is_within_directory(directory, target):
+                        
+                        abs_directory = os.path.abspath(directory)
+                        abs_target = os.path.abspath(target)
+                    
+                        prefix = os.path.commonprefix([abs_directory, abs_target])
+                        
+                        return prefix == abs_directory
+                    
+                    def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                    
+                        for member in tar.getmembers():
+                            member_path = os.path.join(path, member.name)
+                            if not is_within_directory(path, member_path):
+                                raise Exception("Attempted Path Traversal in Tar File")
+                    
+                        tar.extractall(path, members, numeric_owner=numeric_owner) 
+                        
+                    
+                    safe_extract(tar, os.path.dirname(fn))
                 pck_file = fn
             else:
                 raise FileNotFoundError("could not find '{}': this PCK file "
@@ -581,7 +657,26 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
             if len(tarnames) == 1:
                 tarname = tarnames[0]
                 with tarfile.open(tarname) as tar:
-                    tar.extractall(os.path.dirname(tarname))
+                    def is_within_directory(directory, target):
+                        
+                        abs_directory = os.path.abspath(directory)
+                        abs_target = os.path.abspath(target)
+                    
+                        prefix = os.path.commonprefix([abs_directory, abs_target])
+                        
+                        return prefix == abs_directory
+                    
+                    def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                    
+                        for member in tar.getmembers():
+                            member_path = os.path.join(path, member.name)
+                            if not is_within_directory(path, member_path):
+                                raise Exception("Attempted Path Traversal in Tar File")
+                    
+                        tar.extractall(path, members, numeric_owner=numeric_owner) 
+                        
+                    
+                    safe_extract(tar, os.path.dirname(tarname))
                 filename = tarname[:-7]
             elif len(tarnames) == 0:
                 extract_atlas_pck(pck_file, overwrite=overwrite_pck)
@@ -593,7 +688,26 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                 elif len(tarnames) == 1:
                     tarname = tarnames[0]
                     with tarfile.open(tarname) as tar:
-                        tar.extractall(os.path.dirname(tarname))
+                        def is_within_directory(directory, target):
+                            
+                            abs_directory = os.path.abspath(directory)
+                            abs_target = os.path.abspath(target)
+                        
+                            prefix = os.path.commonprefix([abs_directory, abs_target])
+                            
+                            return prefix == abs_directory
+                        
+                        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                        
+                            for member in tar.getmembers():
+                                member_path = os.path.join(path, member.name)
+                                if not is_within_directory(path, member_path):
+                                    raise Exception("Attempted Path Traversal in Tar File")
+                        
+                            tar.extractall(path, members, numeric_owner=numeric_owner) 
+                            
+                        
+                        safe_extract(tar, os.path.dirname(tarname))
                     filename = tarname[:-7]
                 else:
                     raise RuntimeError("found multiple files '{}'"
@@ -664,7 +778,26 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
             if os.path.isfile(tarname):
                 try:
                     with tarfile.open(tarname) as tar:
-                        tar.extractall(os.path.dirname(tarname))
+                        def is_within_directory(directory, target):
+                            
+                            abs_directory = os.path.abspath(directory)
+                            abs_target = os.path.abspath(target)
+                        
+                            prefix = os.path.commonprefix([abs_directory, abs_target])
+                            
+                            return prefix == abs_directory
+                        
+                        def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                        
+                            for member in tar.getmembers():
+                                member_path = os.path.join(path, member.name)
+                                if not is_within_directory(path, member_path):
+                                    raise Exception("Attempted Path Traversal in Tar File")
+                        
+                            tar.extractall(path, members, numeric_owner=numeric_owner) 
+                            
+                        
+                        safe_extract(tar, os.path.dirname(tarname))
                 except EOFError:
                     raise IOError("File {} looks corrupted. Please delete it "
                                   "and run the code to download it again."
