@@ -63,4 +63,3 @@ if savefile:
 There is no reference publication for LDCU yet.  
 For now, if you make use of this code, please include the following descriptive text:  
 > \texttt{LDCU}\footnote{\url{https://github.com/delinea/LDCU}} is a modified version of the python routine implemented by [Espinoza & Jordán (2015)](https://doi.org/10.1093/mnras/stv744) that computes the limb-darkening coefficients and their corresponding uncertainties using a set of stellar intensity profiles accounting for the uncertainties on the stellar parameters. The stellar intensity profiles are generated based on two libraries of synthetic stellar spectra: ATLAS ([Kurucz 1979](https://doi.org/10.1086/190589)) and PHOENIX ([Husser et al. 2013](https://doi.org/10.1051/0004-6361/201219058)).
----
