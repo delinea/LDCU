@@ -1,9 +1,9 @@
 import os
 import sys
 import glob
-import pickle
-import tarfile
 import numpy as np
+from astropy.io import fits
+from astropy import table, units as u
 import matplotlib.pyplot as plt
 import tqdm
 from uncertainties import ufloat, core as ucore
@@ -13,19 +13,21 @@ from scipy.interpolate import UnivariateSpline, LinearNDInterpolator
 import urllib.request as urlrequest
 import warnings
 from scipy.spatial.qhull import QhullError
+from scipy.ndimage import median_filter
 
 import get_lds as lds
 
 
-VERSION = 'v.1.2.deline'
+VERSION = 'v.1.3.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
-# ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
+ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
 ATLAS_Z = [-0.1, -0.2, -0.3, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0,
            -4.5, -5.0, 0.0, 0.1, 0.2, 0.3, 0.5, 1.0]
+ATLAS_PCK_EXT = ["new.pck", ".pck19", ".pck"]   # from most recent to oldest
 PHOENIX_WEBSITE_ROOT = "http://phoenix.astro.physik.uni-goettingen.de/data/"
 PHOENIX_DEFAULT = ("phoenix_models",
                    "v1.0/SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
@@ -37,8 +39,6 @@ PHOENIX_LIBRARIES = {"DEFAULT": PHOENIX_DEFAULT,
 PHOENIX_VERSION = "EXTENDED_LIGHT"
 PHOENIX_DIR = os.path.join(ROOTDIR, PHOENIX_LIBRARIES[PHOENIX_VERSION][0])
 PHOENIX_WEBSITE = PHOENIX_WEBSITE_ROOT + PHOENIX_LIBRARIES[PHOENIX_VERSION][1]
-
-COMPRESS_DATA = True
 
 
 def wget_downloader(url, filename=None, verbose=False):
@@ -97,7 +97,7 @@ else:
                            "download file from a given URL")
 
 
-def update_atlas_grid(force_download=False, remove_downloaded=False):
+def get_available_atlas_pck_files():
     website = urlrequest.urlopen(ATLAS_WEBSITE)
     assert(isinstance(website, urlrequest.http.client.HTTPResponse))
     website_list = [str(line, "utf-8") for line in website.readlines()]
@@ -133,16 +133,11 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
                 filesize = np.uint32(filesize)
             url = ATLAS_WEBSITE+z+filename
             atlas_pck[url] = filesize
-    # Only keeps the most recent one (in order: *new.pck, *.pck19, *.pck)
-    urls = [url for url in atlas_pck.keys() if url.endswith("new.pck")]
-    for url in urls:
-        for url_ in [url[:-7]+".pck19", url[:-7]+".pck"]:
-            if url_ in atlas_pck.keys():
-                atlas_pck.pop(url_)
-    urls = [url for url in atlas_pck.keys() if url.endswith(".pck19")]
-    for url in urls:
-        if url[:-2] in atlas_pck.keys():
-            atlas_pck.pop(url_)
+    return(atlas_pck)
+
+
+def update_atlas_grid(force_download=False, remove_downloaded=False):
+    atlas_pck = get_available_atlas_pck_files()
 
     def filename_from_url(url):
         return(os.path.join(ATLAS_DIR, "raw_models", os.path.basename(url)))
@@ -151,9 +146,10 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     if force_download:
         input_text = "All ATLAS PCK files"
     else:
-        for url in atlas_pck:
+        for url in atlas_pck.keys():
             fn = filename_from_url(url)
-            if os.path.isfile(fn) or os.path.isfile(fn+".tar.gz"):
+            if np.any([os.path.isfile(fn_)
+                       for fn_ in [fn, fn+".gz", fn+".tar.gz"]]):
                 pck_list.pop(url)
         n_pck = len(pck_list)
         if n_pck > 0:
@@ -164,7 +160,7 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
             unit = np.log2(total_size)//10
             total_size = total_size/2**(unit*10)
             unit = ["", "K", "M", "G"][int(unit)]
-            input_text = (input_text+" will be downloaded"
+            input_text = (input_text + " will be downloaded"
                           + " ({:.1f} {}B).".format(total_size, unit)
                           + " Proceed? ([y]/n) : ")
             inp = input(input_text)
@@ -173,10 +169,12 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
             elif inp == "" or inp == "y":
                 if not os.path.isdir(os.path.dirname(filename_from_url(""))):
                     os.makedirs(os.path.dirname(filename_from_url("")))
-                for url in tqdm.tqdm(atlas_pck,
+                for url in tqdm.tqdm(pck_list,
                                      desc="Downloading ATLAS PCK files",
                                      dynamic_ncols=True):
-                    downloader(url, filename_from_url(url))
+                    fn = filename_from_url(url)
+                    downloader(url, fn)
+                    os.system("gzip -f '{}'".format(fn))
                 break
 
     atlas_grid = {}
@@ -184,22 +182,23 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
                          dynamic_ncols=(True)):
         fn = filename_from_url(url)
         if not os.path.isfile(fn):
-            if os.path.isfile(fn+".tar.gz"):
-                with tarfile.open(fn+".tar.gz") as tar:
-                    tar.extractall(os.path.dirname(fn))
-            else:
+            if os.path.isfile(fn+".gz"):
+                os.system("gzip -dk '{}'".format(fn+".gz"))
+            # Dealing with files from older versions
+            elif os.path.isfile(fn+".tar.gz"):
+                os.system("tar -xf '{}' -C '{}'"
+                          .format(fn+".tar.gz", os.path.dirname(fn)))
+            if not os.path.isfile(fn):
                 raise FileNotFoundError("could not find '{}'".format(fn))
+        # Removing files from older versions
+        if os.path.isfile(fn+".tar.gz"):
+            os.remove(fn+".tar.gz")
         with open(fn, "r") as f:
             lines = f.readlines()
-        if remove_downloaded and url in pck_list.keys():
-            pass
-        elif COMPRESS_DATA:
-            if not os.path.isfile(fn+".tar.gz"):
-                with tarfile.open(fn+".tar.gz", "w:gz") as tar:
-                    tar.add(fn, os.path.basename(fn))
-            os.remove(fn)
-        elif os.path.isfile(fn+".tar.gz"):
-            os.remove(fn+".tar.gz")
+        if not (remove_downloaded and url in pck_list.keys()):
+            if not os.path.isfile(fn+".gz"):
+                os.system("gzip -k '{}'".format(fn))
+        os.remove(fn)
         zv = os.path.basename(url)[1:6]
         if zv[0] == "p":
             z_ref = np.float32(0.1*int(zv[1:3]))
@@ -212,20 +211,30 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
         vturb = np.array([], dtype=np.float32)
         filesize = atlas_pck[url]
         for line in lines:
-            if not line.startswith("EFF"):
-                continue
-            if ("[" not in line) or ("]" not in line):
+            if not (line.startswith("TEFF") or line.startswith("EFF")):
                 continue
             line_split = line.split()
-            teff_ = np.uint16(float(line_split[line_split.index("EFF")+1]))
+            if "TEFF" in line:
+                teff_ = line_split[line_split.index("TEFF")+1]
+            else:
+                teff_ = line_split[line_split.index("EFF")+1]
+            teff_ = np.uint16(float(teff_))
             logg_ = np.float32(line_split[line_split.index("GRAVITY")+1])
-            z_ = np.float32(line.split("[")[1].split("]")[0])
-            if z_ != z_ref:
-                print("Discarded erroneous Z value in '{}'.".format(fn))
+            if ("[" not in line) or ("]" not in line):
+                print("Missing Z value in '{}' (Teff = {} K, logg = {})."
+                      .format(fn, teff_, logg_))
                 continue
+            z_ = np.float32(line.split("[")[1].split("]")[0])
             vturb_ = np.float32(line_split[line_split.index("VTURB")+1])
+            if z_ != z_ref:
+                print("Discarded erroneous Z value in '{}'"
+                      " (Teff = {} K, logg = {}, Z = {:+.1f}, vturb = {})."
+                      .format(fn, teff_, logg_, z_, vturb_))
+                continue
             if vturb_ != vturb_ref:
-                print("Discarded erroneous Vturb value in '{}'.".format(fn))
+                print("Discarded erroneous Vturb value in '{}'"
+                      " (Teff = {} K, logg = {}, Z = {:+.1f}, vturb = {})."
+                      .format(fn, teff_, logg_, z_, vturb_))
                 continue
             assert np.all(vturb-vturb_ == 0)
             teff = np.append(teff, teff_)
@@ -250,16 +259,41 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
     atlas_sizes = np.zeros(atlas_grid_shape, dtype=np.uint32)
     atlas_names = np.empty(atlas_grid_shape, dtype="|U{}".format(name_length))
     for url in atlas_grid:
+        fn = filename_from_url(url)
         teff, logg, z, vturb, size = atlas_grid[url]
-        for (teff_, logg_, z_, vturb_) in zip(teff, logg, z, vturb):
+        for teff_, logg_, z_, vturb_ in zip(teff, logg, z, vturb):
             i_teff = np.where(atlas_teff == teff_)[0][0]
             i_logg = np.where(atlas_logg == logg_)[0][0]
             i_z = np.where(atlas_z == z_)[0][0]
             i_vturb = np.where(atlas_vturb == vturb_)[0][0]
             atlas_urls[i_teff, i_logg, i_z, i_vturb] = url
             atlas_sizes[i_teff, i_logg, i_z, i_vturb] = size
-            fn = filename_from_url(url)
+            fn_i = atlas_names[i_teff, i_logg, i_z, i_vturb]
+            if fn_i != "":
+                if fn_i == fn:
+                    print("Several intensity profiles with the same stellar"
+                          " parameters found in '{}' "
+                          " (Teff = {} K, logg = {}, Z = {:+.1f}, vturb = {})."
+                          .format(fn, teff_, logg_, z_, vturb_))
+                else:
+                    ext_idx_i = [i for i, ext in enumerate(ATLAS_PCK_EXT)
+                                 if fn_i.endswith(ext)][0]
+                    ext_idx = [i for i, ext in enumerate(ATLAS_PCK_EXT)
+                               if fn.endswith(ext)][0]
+                    fn_i_base = fn_i.split(ATLAS_PCK_EXT[ext_idx_i])[0]
+                    fn_base = fn.split(ATLAS_PCK_EXT[ext_idx])[0]
+                    if fn_i_base != fn_base:
+                        txt = ("Several intensity profiles with the same "
+                               "stellar parameters found in 2 different PCK "
+                               "files: '{}' and '{}' (Teff = {} K, logg = {}, "
+                               "Z = {:+.1f}, vturb = {})."
+                               .format(fn_i, fn, teff_, logg_, z_, vturb_))
+                        raise RuntimeError(txt)
+                    # Keep the most recent one (*new.pck > *.pck19 > *.pck)
+                    if ext_idx > ext_idx_i:
+                        fn = fn_i
             atlas_names[i_teff, i_logg, i_z, i_vturb] = fn
+
     atlas_grid = {"Teff": atlas_teff, "logg": atlas_logg,
                   "M/H": atlas_z, "vturb": atlas_vturb,
                   "url_grid": atlas_urls, "size_grid": atlas_sizes,
@@ -267,15 +301,21 @@ def update_atlas_grid(force_download=False, remove_downloaded=False):
 
     if not os.path.isdir(ATLAS_DIR):
         os.mkdir(ATLAS_DIR)
-    pkl_fn = os.path.join(ATLAS_DIR, "atlas_grid.pkl")
-    with open(pkl_fn, "wb") as f:
-        pickle.dump(atlas_grid, f)
-    if COMPRESS_DATA:
-        with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
-            tar.add(pkl_fn, os.path.basename(pkl_fn))
-        os.remove(pkl_fn)
-    elif os.path.isfile(pkl_fn+".tar.gz"):
-        os.remove(pkl_fn+".tar.gz")
+    fits_fn = os.path.join(ATLAS_DIR, "atlas_grid.fits")
+    hdulist = [fits.PrimaryHDU(), ]
+    for name, arr in atlas_grid.items():
+        hdu = fits.table_to_hdu(table.Table(data=arr))
+        hdu.name = name
+        hdulist.append(hdu)
+    hdulist = fits.HDUList(hdulist)
+    hdulist.writeto(fits_fn)
+    os.system("gzip -f '{}'".format(fits_fn))
+
+    # Removing files from older versions
+    for fn in ["atlas_grid.pkl", "atlas_grid.pkl.tar.gz"]:
+        fn = os.path.join(ATLAS_DIR, fn)
+        if os.path.isfile(fn):
+            os.remove(fn)
 
 
 def update_phoenix_grid():
@@ -351,75 +391,94 @@ def update_phoenix_grid():
 
     if not os.path.isdir(PHOENIX_DIR):
         os.mkdir(PHOENIX_DIR)
-    pkl_fn = os.path.join(PHOENIX_DIR, "phoenix_grid.pkl")
-    with open(pkl_fn, "wb") as f:
-        pickle.dump(phoenix_grid, f)
-    if COMPRESS_DATA:
-        with tarfile.open(pkl_fn+".tar.gz", "w:gz") as tar:
-            tar.add(pkl_fn, os.path.basename(pkl_fn))
-        os.remove(pkl_fn)
-    elif os.path.isfile(pkl_fn+".tar.gz"):
-        os.remove(pkl_fn+".tar.gz")
+    fits_fn = os.path.join(PHOENIX_DIR, "phoenix_grid.fits")
+    hdulist = [fits.PrimaryHDU(), ]
+    for name, arr in phoenix_grid.items():
+        hdu = fits.table_to_hdu(table.Table(data=arr))
+        hdu.name = name
+        hdulist.append(hdu)
+    hdulist = fits.HDUList(hdulist)
+    hdulist.writeto(fits_fn)
+    os.system("gzip -f '{}'".format(fits_fn))
+
+    # Removing files from older versions
+    for fn in ["phoenix_grid.pkl", "phoenix_grid.pkl.tar.gz"]:
+        fn = os.path.join(PHOENIX_DIR, fn)
+        if os.path.isfile(fn):
+            os.remove(fn)
 
 
 def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                  M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf)):
     bounds = locals()
-    pkl_fns = {"ATLAS": os.path.join(ATLAS_DIR, "atlas_grid.pkl"),
-               "PHOENIX": os.path.join(PHOENIX_DIR, "phoenix_grid.pkl")}
-    for name, pkl_fn in pkl_fns.items():
-        if not os.path.isfile(pkl_fn) and not os.path.isfile(pkl_fn+".tar.gz"):
+    grid_fns = {"ATLAS": os.path.join(ATLAS_DIR, "atlas_grid.fits.gz"),
+                "PHOENIX": os.path.join(PHOENIX_DIR, "phoenix_grid.fits.gz")}
+    for model, grid_fn in grid_fns.items():
+        if not os.path.isfile(grid_fn):
             raise FileNotFoundError("{} grid file could not be found: "
                                     "'update_{}_grid()' must be called first"
-                                    .format(name, name.lower()))
+                                    .format(model, model.lower()))
+
     subgrids = {}
-    for name, pkl_fn in pkl_fns.items():
-        if not os.path.isfile(pkl_fn):
-            with tarfile.open(pkl_fn+".tar.gz") as tar:
-                tar.extractall(os.path.dirname(pkl_fn))
-        with open(pkl_fn, "rb") as f:
-            grid = pickle.load(f)
-        if COMPRESS_DATA:
-            os.remove(pkl_fn)
-        elif os.path.isfile(pkl_fn+".tar.gz"):
-            os.remove(pkl_fn+".tar.gz")
+    for model, grid_fn in grid_fns.items():
+        tbls = {hdu.name: table.Table.read(grid_fn, hdu=hdu.name)
+                for hdu in fits.open(grid_fn)[1:]}
+        grid = {name: np.array([[rv for rv in row.values()] for row in tbl])
+                for name, tbl in tbls.items()}
+        for name in ["URL_GRID", "NAME_GRID"]:
+            grid[name] = grid[name].astype(str)
         sg = {}
         idx = []
         for pn in bounds:
             pmin, pmax = bounds[pn]
             if pn == "M_H":
                 pn = "M/H"
-            g = grid[pn]
+            g = grid[pn.upper()][0]
             pmin = pmin if np.all(g >= pmin) else np.max(g[g < pmin])
             pmax = pmax if np.all(g <= pmax) else np.min(g[g > pmax])
             idx_pn = np.where((g >= pmin) & (g <= pmax))[0]
-            sg[pn] = g[idx_pn]
+            sg[pn.upper()] = g[idx_pn]
             idx.append(idx_pn)
         idx = tuple(np.meshgrid(*idx, indexing="ij"))
         for kw in grid:
             if kw not in sg:
                 sg[kw] = grid[kw][idx]
-        subgrids[name] = sg
+        subgrids[model] = sg
 
     return(subgrids)
 
 
 def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
-                   M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf)):
+                   M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf),
+                   force_download=False):
     bounds = locals()
+    force_download = bounds.pop("force_download")
     subgrids = get_subgrids(**bounds)
     urls = []
     sizes = []
     ofns = []
     for model, subgrid in subgrids.items():
-        names_ = np.ravel(subgrid["name_grid"])
-        urls_ = np.ravel(subgrid["url_grid"])
-        sizes_ = np.ravel(subgrid["size_grid"])
-        for name, url, size in zip(names_, urls_, sizes_):
+        names_ = np.ravel(subgrid["name_grid".upper()])
+        urls_ = np.ravel(subgrid["url_grid".upper()])
+        sizes_ = np.ravel(subgrid["size_grid".upper()])
+        tqdm_kwargs = dict(desc="Checking {} files".format(model),
+                           leave=False)
+        for name, url, size in zip(tqdm.tqdm(names_, **tqdm_kwargs),
+                                   urls_, sizes_):
             if url == "" or url in urls:
                 continue
-            if os.path.isfile(name) or os.path.isfile(name+".tar.gz"):
-                continue
+            # Dealing with files from older versions
+            if os.path.isfile(name+".tar.gz"):
+                if not force_download and not os.path.isfile(name+".gz"):
+                    os.system("tar -xf '{}' -C '{}'"
+                              .format(name+".tar.gz", os.path.dirname(name)))
+                os.remove(name+".tar.gz")
+            if not force_download:
+                if os.path.isfile(name+".gz"):
+                    continue
+                elif os.path.isfile(name):
+                    os.system("gzip '{}'".format(name))
+                    continue
             urls.append(url)
             sizes.append(size)
             ofns.append(name)
@@ -441,105 +500,250 @@ def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                                               desc="Downloading files",
                                               dynamic_ncols=True), ofns):
                     downloader(url, ofn)
-                    if COMPRESS_DATA:
-                        with tarfile.open(ofn+".tar.gz", "w:gz") as tar:
-                            tar.add(ofn, arcname=os.path.basename(ofn))
-                        os.remove(ofn)
+                    os.system("gzip -f '{}'".format(ofn))
                 break
 
 
+def check_phoenix_library(verbose=True, check_all=False):
+    fns = np.sort(glob.glob(os.path.join(PHOENIX_DIR,
+                                         "raw_models/*/lte*.fits*")))
+    if not check_all:
+        nsig = 3
+        filt_size = 100
+        sizes = np.array([os.path.getsize(fn) for fn in fns], int)
+        sizes_filt = median_filter(sizes, size=filt_size, mode="mirror")
+        sizes_res = sizes - sizes_filt
+        sig_sizes = np.std(sizes_res)
+        idx_bad = np.abs(sizes_res) > nsig * sig_sizes
+        fns = fns[idx_bad]
+
+    bad_files = {}
+    for fn in tqdm.tqdm(fns, desc="Checking PHOENIX files", leave=False):
+        err = []
+        try:
+            hdulist = fits.open(fn)
+            n_hdu = len(hdulist)
+            if n_hdu != 3:
+                err += ["{} HDUs (expected 3)".format(n_hdu), ]
+            if n_hdu >= 2:
+                ps = np.shape(hdulist[0].data)
+                ss = np.shape(hdulist[1].data)
+                if len(ps) != 2:
+                    err += ["Primary HDU has {} dimensions (expected 2)"
+                            .format(len(ps)), ]
+                if len(ss) != 1:
+                    err += ["Secondary HDU (MU) has {} dimensions (expected 1)"
+                            .format(len(ss)), ]
+                if (len(ps) >= 1) and (len(ss) >= 1):
+                    if ps[0] != ss[0]:
+                        err += ["Primary and secondary (MU) HDUs have "
+                                "incompatible dimensions", ]
+            if n_hdu >= 3:
+                if not isinstance(hdulist[2], fits.hdu.table.BinTableHDU):
+                    err += ["Third HDU is not a table", ]
+        except Exception as e:
+            err += [e, ]
+        if len(err) > 0:
+            bad_files[fn] = " | ".join(err)
+
+    if len(bad_files) == 0:
+        return(None)
+    elif verbose:
+        n = np.max([len(fn) for fn in bad_files.keys()])
+        txt = "{{:{}}}: {{}}".format(n)
+        for fn, err in bad_files.items():
+            print(txt.format(fn, err))
+    return(bad_files)
+
+
+def read_atlas_pck_file(pck_file):
+    with open(pck_file, "r") as f:
+        data = f.read()
+
+    if "TEFF" in data:
+        assert("\x0c" not in data)
+    else:
+        data = data.replace("\n", "\n ")
+        data = data.replace(" EFF", "TEFF")
+        if data.startswith("EFF"):
+            data = "T" + data
+        data = data.replace("\x0c", "\n1")
+
+    blocks = ["TEFF" + block for block in data.split("TEFF")[1:]]
+    n_blocks = len(blocks)
+
+    n = 115
+    idx = [9, 10] + [6, ] * 16
+    idx = np.cumsum(idx)
+    assert(idx[-1] == n)
+    n_idx = len(idx)
+    for i in range(n_blocks):
+        block_i = blocks[i]
+        lines = [line for line in block_i.split("\n") if len(line.strip()) > 0]
+        new_lines = lines.copy()
+        bad_lines = np.zeros(np.size(new_lines), bool)
+        for j, line in enumerate(lines):
+            if "TEFF" in line:
+                continue
+            if "wl(nm)" in line:
+                continue
+            if "TEFF" in lines[j-2]:
+                continue
+            if line == "INTENSITY": # bad line spotted in 'ip01k2.pck'
+                bad_lines[j] = True
+                continue
+            if len(line) != n:
+                raise RuntimeError("Unexpected line length of {} instead of {}"
+                                   " in '{}' for line '{}'"
+                                   .format(len(line), n, pck_file, line))
+            cols = [line[:idx[0]], ]
+            cols += [line[idx[ii]:idx[ii+1]] for ii in range(n_idx-1)]
+            new_lines[j] = ",".join(cols)
+        blocks[i] = list(np.array(new_lines)[~bad_lines])
+
+    return(blocks)
+
+
 def extract_atlas_pck(pck_file, overwrite=True):
-    pck_tarfile = pck_file+".tar.gz"
+    # Dealing with files from older versions
+    if os.path.isfile(pck_file+".tar.gz"):
+        if not os.path.isfile(pck_file+".gz"):
+            os.system("tar -xf '{}' -C '{}'"
+                      .format(pck_file+".tar.gz", os.path.dirname(pck_file)))
+        os.remove(pck_file+".tar.gz")
     if not os.path.isfile(pck_file):
-        if os.path.isfile(pck_tarfile):
-            with tarfile.open(pck_tarfile) as tar:
-                tar.extractall(os.path.dirname(pck_tarfile))
+        if os.path.isfile(pck_file+".gz"):
+            os.system("gzip -dk '{}'".format(pck_file+".gz"))
         else:
             fn = os.path.join(ATLAS_DIR, "raw_models", pck_file)
             if os.path.isfile(fn):
                 pck_file = fn
-            elif os.path.isfile(fn+".tar.gz"):
-                with tarfile.open(fn+".tar.gz") as tar:
-                    tar.extractall(os.path.dirname(fn))
+            elif os.path.isfile(fn+".gz"):
+                os.system("gzip -dk '{}'".format(fn+".gz"))
                 pck_file = fn
             else:
-                raise FileNotFoundError("could not find '{}': this PCK file "
-                                        "must first be downloaded by calling "
-                                        "'update_atlas_grid()'"
-                                        .format(pck_file))
+                err_txt = ("could not find '{}': this PCK file can be "
+                           "downloaded by calling "
+                           "'update_atlas_grid(remove_downloaded=False)'"
+                           .format(pck_file))
+                raise FileNotFoundError(err_txt)
 
     metal = os.path.basename(pck_file)[1:4]
     vturb = os.path.basename(pck_file)[5:6]
     pck_dir = os.path.join(ATLAS_DIR, os.path.basename(pck_file)[1:6])
     if not os.path.isdir(pck_dir):
         os.mkdir(pck_dir)
+
+    blocks = read_atlas_pck_file(pck_file)
     filenames = []
-    lines = lds.getFileLines(pck_file)
-    bar_format = "Extracting PCK file: {n:3} readable files processed"
-    pbar = tqdm.tqdm(bar_format=bar_format, postfix=[dict(rate=0), ],
-                     leave=False)
-    pbar.bar_format += " ({postfix[0][rate]:.2f} files/second)"
-    while True:
-        TEFF, GRAVITY, LH = lds.getATLASStellarParams(lines)
+    for i, block in enumerate(tqdm.tqdm(blocks, desc="Extracting PCK file",
+                                        leave=False)):
+        line = block[0].split()
+        TEFF = str(int(np.double(line[line.index("TEFF") + 1])))
+        GRAVITY = str(np.round(np.double(line[line.index("GRAVITY") + 1]), 2))
+        if "L/H" in line:
+            LH = str(np.round(np.double(line[line.index("L/H") + 1]), 2))
+        else:
+            LH = "1.25"
+
         pck_subdir = os.path.join(pck_dir, TEFF)
         if not os.path.isdir(pck_subdir):
             os.mkdir(pck_subdir)
-        idx, mus = lds.getIntensitySteps(lines)
-        filename = os.path.join(pck_subdir, "grav_"+GRAVITY+"_lh_"+LH+".dat")
-        tarname = filename+".tar.gz"
-        filenames.append(filename)
-        already_exists = os.path.isfile(tarname) or os.path.isfile(filename)
-        to_be_saved = overwrite or not already_exists
-        if to_be_saved:
-            f = open(filename, "w")
-            f.write("#TEFF:{} METALLICITY:{} GRAVITY:{} VTURB:{} L/H: {}\n"
-                    .format(TEFF, metal, GRAVITY, vturb, LH))
-            f.write("#wav (nm) \t cos(theta):" + mus)
-        for i in range(idx, len(lines)):
-            line = lines[i]
-            j = line.find("EFF")
-            k = line.find("\x0c")
-            if(k != -1 or line == ""):
-                pass
-            elif(j != -1):
-                lines = lines[i:]
-                break
-            else:
-                wav_p_intensities = line.split(" ")
-                s = lds.FixSpaces(wav_p_intensities)
-                if to_be_saved:
-                    f.write(s+"\n")
-        if to_be_saved:
-            f.close()
-        if COMPRESS_DATA:
-            if overwrite or not os.path.isfile(tarname):
-                with tarfile.open(tarname, "w:gz") as tar:
-                    tar.add(filename, os.path.basename(filename))
-            if os.path.isfile(filename):
+        filename = os.path.join(pck_subdir, "grav_"+GRAVITY+"_lh_"+LH+".fits")
+
+        # Dealing with files from older versions
+        datname = filename.replace(".fits", ".dat")
+        if os.path.isfile(datname+".tar.gz"):
+            os.remove(datname+".tar.gz")
+        if os.path.isfile(datname):
+            os.remove(datname)
+
+        if os.path.isfile(filename):
+            if os.path.isfile(filename+".gz"):
                 os.remove(filename)
-        elif os.path.isfile(tarname):
-            os.remove(tarname)
-        pbar.postfix[0]["rate"] = pbar.n/pbar.format_dict["elapsed"]
-        pbar.update()
-        if(i == len(lines)-1):
-            break
+            else:
+                os.system("gzip '{}'".format(filename))
 
-    pbar.close()
+        new_hdu = False
+        if os.path.isfile(filename+".gz"):
+            to_be_removed = False
+            try:
+                pck_file_i = fits.getval(filename+".gz", "PCK_FILE",
+                                         extname="PRIMARY")
+            except KeyError:    # file from older version (to be replaced)
+                to_be_removed = True
+            if not to_be_removed:
+                ext_idx_i = [i for i, ext in enumerate(ATLAS_PCK_EXT)
+                             if pck_file_i.endswith(ext)][0]
+                ext_idx = [i for i, ext in enumerate(ATLAS_PCK_EXT)
+                           if pck_file.endswith(ext)][0]
+                # Keep the most recent one (*new.pck > *.pck19 > *.pck)
+                if ext_idx == ext_idx_i:
+                    if filename not in filenames:
+                        to_be_removed = overwrite
+                    else:   # several models with same stellar parameters
+                        new_hdu = True
+                elif ext_idx < ext_idx_i:   # current file is more recent
+                    to_be_removed = True
+                else:   # current file is older, thus skipped
+                    continue
+            if to_be_removed:
+                os.remove(filename+".gz")
 
-    if COMPRESS_DATA:
-        if not os.path.isfile(pck_tarfile):
-            with tarfile.open(pck_tarfile, "w:gz") as tar:
-                tar.add(pck_file, os.path.basename(pck_file))
+        if not new_hdu:
+            filenames.append(filename)
+
+        if not overwrite and os.path.isfile(filename+".gz"):
+            continue
+
+        assert(block[1].split()[0] == "wl(nm)")
+        mus = np.array(block[2].split(), float)
+        data = [line.split(",") for line in block[3:]]
+
+        names = ["Wavelength", ] + ["mu={:.3f}".format(mu) for mu in mus]
+        units = [u.nm, ]
+        units += [u.erg/u.cm**2/u.s/u.Hz/u.steradian, ]*(len(names)-1)
+        data = np.array(data, float)
+        tbl = table.Table(data=data, names=names, units=units)
+        idx_ok = tbl["mu=1.000"] > 0.0
+        tbl = tbl[idx_ok]
+        for cn in tbl.colnames:
+            if cn.startswith("mu=") and cn != "mu=1.000":
+                tbl[cn] = tbl[cn]*1e-5*tbl["mu=1.000"]
+        tbl_hdu = fits.table_to_hdu(tbl)
+        tbl_hdu.name = "INTENSITY"
+        if new_hdu:
+            hdulist = fits.open(filename+".gz")
+            hdulist.append(tbl_hdu)
+        else:
+            hdu = fits.PrimaryHDU()
+            hdu.header["PCK_FILE"] = (pck_file, "ATLAS PCK source file")
+            hdu.header["TEFF"] = (float(TEFF),
+                                  "Stellar effective temperature [K]")
+            metal_float = float(metal.replace("m", "-").replace("p", "+"))
+            hdu.header["METAL"] = (metal_float, "Stellar metallicity")
+            hdu.header["GRAVITY"] = (float(GRAVITY),
+                                     "Stellar surface gravity log(g) [cm/s2]")
+            hdu.header["VTURB"] = (float(vturb),
+                                   "Stellar micro-turbulent velocity [km/s]")
+            hdu.header["L_H"] = (float(LH),
+                                 "Stellar mixing-length parameter l/H")
+            hdulist = fits.HDUList([hdu, tbl_hdu])
+        hdulist.writeto(filename, overwrite=True)
+        os.system("gzip -f '{}'".format(filename))
+
+    if os.path.isfile(pck_file+".gz"):
         os.remove(pck_file)
-    elif os.path.isfile(pck_tarfile):
-        os.remove(pck_tarfile)
+    else:
+        os.system("gzip '{}'".format(pck_file))
 
     return filenames
 
 
 def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                               atlas_correction=True, photon_correction=True,
-                              max_bad_RF=0.0, overwrite_pck=False):
+                              max_bad_RF=0.0, overwrite_pck=False,
+                              atlas_hdu=1):
     if type(RF) is str:
         RF_list = [RF, ]
         single_RF = True
@@ -548,14 +752,12 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
         single_RF = False
 
     points = {}
+    filenames = {}
     for kw, subgrid in subgrids.items():
-        idx = dict(zip(["Teff", "logg", "M/H", "vturb"],
-                       np.where(subgrid["size_grid"] > 0)))
+        idx = dict(zip(["TEFF", "LOGG", "M/H", "VTURB"],
+                       np.where(subgrid["SIZE_GRID"] > 0)))
         points[kw] = np.vstack([subgrid[kw][idx[kw]] for kw in idx]).T
-        if kw == "ATLAS":
-            atlas_pck_files = subgrid["name_grid"][subgrid["size_grid"] > 0]
-        if kw == "PHOENIX":
-            phoenix_filenames = subgrid["name_grid"][subgrid["size_grid"] > 0]
+        filenames[kw] = subgrid["NAME_GRID"][subgrid["SIZE_GRID"] > 0]
 
     # Response functions
     wl, S = {}, {}
@@ -563,58 +765,54 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
         try:
             wl[RF], S[RF] = lds.get_response(None, None, RF, verbose=False)[2:]
         except BaseException:
-            raise FileNotFoundError("could not find {}".format(RF)) from None
+            try:
+                RF_split = RF.lower().split("_")
+                if len(RF_split) == 3:
+                    if RF_split[0] == "uniform":
+                        wl_min, wl_max = np.array(RF_split[1:], float)
+                        wl_RF = np.linspace(wl_min, wl_max, 1000)
+                        S_RF = np.ones_like(wl_RF)
+                        wl[RF], S[RF] = wl_RF, S_RF
+                    elif RF_split[0] == "gaussian":
+                        wl_mu, wl_fwhm = np.array(RF_split[1:], float)
+                        wl_sig = wl_fwhm/(2*np.sqrt(2*np.log(2)))
+                        wl_RF = wl_mu + 5 * wl_sig * np.linspace(-1, 1, 1000)
+                        S_RF = np.exp(-0.5*((wl_RF-wl_mu)/wl_sig)**2)
+                        wl[RF], S[RF] = wl_RF, S_RF
+                    else:
+                        raise Exception
+                else:
+                    raise Exception
+            except Exception:
+                raise RuntimeError("could not find nor implement response "
+                                   "function '{}'".format(RF)) from None
 
     # ATLAS model
     for i, point in enumerate(tqdm.tqdm(points["ATLAS"],
                                         desc="Computing ATLAS LD curves",
                                         dynamic_ncols=True)):
         Teff, grav, metal, vturb = point
-        # check if readable file available ("*.dat")
-        pck_file = atlas_pck_files[i]
-        filename = os.path.join(ATLAS_DIR, os.path.basename(pck_file)[1:6],
-                                "{:.0f}".format(Teff),
-                                "grav_{}_lh_*.dat".format(grav))
-        filenames = glob.glob(filename)
-        if len(filenames) == 0:
-            tarnames = glob.glob(filename+".tar.gz")
-            if len(tarnames) == 1:
-                tarname = tarnames[0]
-                with tarfile.open(tarname) as tar:
-                    tar.extractall(os.path.dirname(tarname))
-                filename = tarname[:-7]
-            elif len(tarnames) == 0:
-                extract_atlas_pck(pck_file, overwrite=overwrite_pck)
-                tarnames = glob.glob(filename+".tar.gz")
-                if len(tarnames) == 0:
-                    raise FileNotFoundError("could not find '{}'"
-                                            " after PCK extraction"
-                                            .format(filename+".tar.gz"))
-                elif len(tarnames) == 1:
-                    tarname = tarnames[0]
-                    with tarfile.open(tarname) as tar:
-                        tar.extractall(os.path.dirname(tarname))
-                    filename = tarname[:-7]
-                else:
-                    raise RuntimeError("found multiple files '{}'"
-                                       " after PCK extraction"
-                                       .format(filename+".tar.gz"))
-            else:
+        pck_file = filenames["ATLAS"][i]
+        fits_pattern = os.path.join(ATLAS_DIR, os.path.basename(pck_file)[1:6],
+                                    "{:.0f}".format(Teff),
+                                    "grav_{}_lh_*.fits.gz".format(grav))
+        fits_files = glob.glob(fits_pattern)
+        if len(fits_files) == 0:
+            extract_atlas_pck(pck_file, overwrite=overwrite_pck)
+            fits_files = glob.glob(fits_pattern)
+            if len(fits_files) == 0:
+                raise FileNotFoundError("could not find '{}'"
+                                        " after PCK extraction"
+                                        .format(fits_pattern))
+            elif len(fits_files) > 1:
                 raise RuntimeError("found multiple files '{}'"
-                                   .format(filename+".tar.gz"))
-        elif len(filenames) == 1:
-            filename = filenames[0]
-            tarname = filename+".tar.gz"
-        else:
-            raise RuntimeError("found multiple files '{}'".format(filename))
-        wavelengths, I, mu = lds.read_ATLAS(filename, None)
-        if COMPRESS_DATA:
-            if not os.path.isfile(tarname):
-                with tarfile.open(tarname, "w:gz") as tar:
-                    tar.add(filename, os.path.basename(filename))
-            os.remove(filename)
-        elif os.path.isfile(tarname):
-            os.remove(tarname)
+                                   " after PCK extraction"
+                                   .format(fits_pattern))
+        elif len(fits_files) > 1:
+            raise RuntimeError("found multiple files '{}'"
+                               .format(fits_pattern))
+        fits_file = fits_files[0]
+        wavelengths, I, mu = lds.read_ATLAS_fits(fits_file, hdu=atlas_hdu)
         mu100 = np.arange(1.0, 0.0, -0.01)
         I100 = np.full((len(I), len(mu100)), np.nan)
         for j, I_j in enumerate(I):
@@ -656,31 +854,19 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
             ATLAS_I[RF]["A100"][i] = I0_100
 
     # PHOENIX model
-    for i, filename in enumerate(tqdm.tqdm(phoenix_filenames,
+    n_phoenix_fns = len(filenames["PHOENIX"])
+    for i, filename in enumerate(tqdm.tqdm(filenames["PHOENIX"],
                                            desc="Computing PHOENIX LD curves",
                                            dynamic_ncols=True)):
-        tarname = filename+".tar.gz"
+        filename = filename + ".gz"
         if not os.path.isfile(filename):
-            if os.path.isfile(tarname):
-                try:
-                    with tarfile.open(tarname) as tar:
-                        tar.extractall(os.path.dirname(tarname))
-                except EOFError:
-                    raise IOError("File {} looks corrupted. Please delete it "
-                                  "and run the code to download it again."
-                                  .format(tarname))
-            else:
-                filenames = glob.glob(os.path.join(PHOENIX_DIR, "raw_models",
-                                                   "*", filename))
-                if len(filenames) == 1:
-                    filename = filenames[0]
-                    tarname = filename+".tar.gz"
-                elif len(filenames) == 0:
-                    raise FileNotFoundError("no such file '{}'"
-                                            .format(filename))
-                else:
-                    raise RuntimeError("found multiple files '{}'"
-                                       .format(filename))
+            filenames_ = glob.glob(os.path.join(PHOENIX_DIR, "raw_models", "*",
+                                                filename))
+            if len(filenames_) == 0:
+                raise FileNotFoundError("no such file '{}'".format(filename))
+            elif len(filenames_) > 1:
+                raise RuntimeError("found multiple files '{}'"
+                                   .format(filename))
         try:
             wavelengths, I, mu = lds.read_PHOENIX(filename)
         except KeyError:
@@ -688,19 +874,13 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                           "the code to download it again.".format(filename))
         except BaseException as e:
             raise e
-        if COMPRESS_DATA:
-            if not os.path.isfile(tarname):
-                with tarfile.open(tarname, "w:gz") as tar:
-                    tar.add(filename, os.path.basename(filename))
-            os.remove(filename)
-        elif os.path.isfile(tarname):
-            os.remove(tarname)
+
         if i == 0:
             PHOENIX_sizes = {"P": len(mu), "PS": len(mu), "P100": 100}
-            PHOENIX_mu = {RF: {FT: np.full((len(phoenix_filenames), n), np.nan)
+            PHOENIX_mu = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
                                for FT, n in PHOENIX_sizes.items()}
                           for RF in RF_list}
-            PHOENIX_I = {RF: {FT: np.full((len(phoenix_filenames), n), np.nan)
+            PHOENIX_I = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
                               for FT, n in PHOENIX_sizes.items()}
                          for RF in RF_list}
         for RF in RF_list:
@@ -964,7 +1144,7 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             "#\n# Limb Darkening Calculations {}\n"
             "#\n# Limb-darkening coefficients for linear (a), "
             "square-root (s1, s2),\n"
-            "# quadratic (u1, u2), three-parameter (b1, b2, b3),\n"
+            "# quadratic (u1, u2) & (q1, q2), three-parameter (b1, b2, b3),\n"
             "# non-linear (c1, c2, c3, c4), logarithmic (l1, l2), "
             "exponential (e1, e2)\n"
             "# and power-2 laws (p1, p2).\n"
@@ -998,6 +1178,12 @@ def get_header(name=None, Teff=None, logg=None, M_H=None, vturb=None):
             " files\n"
             "#   9) using PHOENIX library v3.0 that extends up to 5.5 "
             "microns\n"
+            "#  10) corrected a bug ignoring entire or part of ATLAS PCK "
+            "files\n"
+            "#  11) storing intensity profiles in gzipped FITS files\n"
+            "           (compressed and directly readable by astropy.table)\n"
+            "#  12) added options for customizable uniform and Gaussian "
+            "passbands\n"
             "#\n" + 79*"#" + "\n")
     text = text.format(VERSION)
 
@@ -1124,7 +1310,7 @@ def get_summary(ldc, fmt="8.6f"):
 def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
                         RF="cheops_response_function.dat",
                         nsig=4, nsamples=2000, max_bad_points=0.30,
-                        max_bad_RF=0.0, overwrite_pck=False):
+                        max_bad_RF=0.0, overwrite_pck=False, atlas_hdu=1):
     if vturb is None:
         vturb = ufloat(2, .5)
         warnings.warn("Microturbulent velocity 'vturb' not specified: "
@@ -1152,7 +1338,8 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
                                           atlas_correction=True,
                                           photon_correction=True,
                                           max_bad_RF=max_bad_RF,
-                                          overwrite_pck=overwrite_pck)
+                                          overwrite_pck=overwrite_pck,
+                                          atlas_hdu=atlas_hdu)
 
     # Drawing stellar parameters from normal distributions
     vals = np.full((nsamples, 4), np.nan)

@@ -9,12 +9,13 @@ import scipy.interpolate as si
 from copy import copy
 
 import astropy.io.fits as fits
+from astropy import table, units as u
 
 from scipy.optimize import curve_fit
 from uncertainties import ufloat
 
 
-VERSION = 'v.1.1.deline'
+VERSION = 'v.1.3.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -1005,6 +1006,19 @@ def read_ATLAS(chosen_filename, model):
         return wavelengths[flag], I100[flag], mu100
     else:
         return wavelengths[flag], intensities[flag], mu
+
+
+def read_ATLAS_fits(fits_fn, hdu=1):
+    n_hdu = len(fits.open(fits_fn))
+    hdu = hdu if hdu >= 0 else n_hdu + hdu
+    hdu = hdu if n_hdu > 2 else 1
+    hdu = hdu if hdu > 0 else 1
+    tbl = table.Table.read(fits_fn, hdu=hdu)
+    wavelengths = tbl["Wavelength"].to(u.Angstrom).value
+    mu = np.array([float(cn.split("mu=")[1])
+                   for cn in tbl.colnames if "mu=" in cn])
+    intensities = np.transpose([tbl[cn] for cn in tbl.colnames if "mu=" in cn])
+    return wavelengths, intensities, mu
 
 
 def read_PHOENIX(chosen_path):

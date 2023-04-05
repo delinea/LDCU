@@ -13,7 +13,7 @@ Finally, LDCU provides for each law a series of additional coefficient values by
 
 ### Dependencies
 The code has the following known dependencies:
-`numpy`, `scipy`, `astropy`, `uncertainties`, `tqdm`
+`numpy`, `scipy`, `astropy`, `uncertainties`, `tqdm`, `matplotlib`
 
 ### How to run LDCU
 The current version of the code is still under development and poorly documented. The coefficients can nevertheless be computed and displayed using the following commands.
@@ -52,6 +52,49 @@ print(summary)
 if savefile:
     with open(savefile, "w") as f:
         f.write(header + summary)
+```
+
+### Displaying intensity profiles with LDCU
+The next release of LDCU will include a dedicated function to make plots of intensity profiles for any given star. The current workaround for this is shown below.
+```
+import os
+from uncertainties import ufloat
+import get_lds_with_errors_v3 as glds
+import intensity_profiles as ip
+
+# create a dict with your input stellar parameters
+star = {"Name": "55 Cnc",
+        "Teff": ufloat(5172, 18),       # K
+        "logg": ufloat(4.43, 0.02),     # cm/s2 (= log g)
+        "M_H": ufloat(0.35, 0.10),      # dex (= M/H)
+        "vturb": None}                  # km/s
+
+# list of response functions (pass bands) to be used
+RF_list = ["CHEOPS_response_function.dat", ]
+
+# create directory to store data and figures
+main_dir = "results_profiles"
+if not os.path.isdir(main_dir):
+    os.mkdir(main_dir)
+
+# query the ATLAS and PHOENIX database and build up a grid of available models
+#   (to be run only once each)
+glds.update_atlas_grid()
+glds.update_phoenix_grid()
+
+# compute intensity profile interpolators from the models
+ip_interp = ip.intensity_profile_interpolators(star, RF_list,
+                                               main_dir=main_dir)
+
+# draw several samples from the input stellar parameters
+samples = ip.get_samples(star, RF_list)
+
+# compute intensity profiles
+intensity_profiles = ip.intensity_profiles(star, ip_interp, samples,
+                                           main_dir=main_dir)
+
+# plot intensity profiles
+fig = ip.plot_intensity_profiles(star, intensity_profiles, main_dir=main_dir)
 ```
 
 ### Future developments
