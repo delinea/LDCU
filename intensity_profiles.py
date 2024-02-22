@@ -190,14 +190,16 @@ ld_laws = {"linear": (ld_linear_model, glds.lds.fit_linear),
 def plot_intensity_profiles(star, intensity_profiles, ld_law="quadratic",
                             main_dir="", FT_idx=2):
     ld_model, fit_func = ld_laws[ld_law]
-    FT_names = ["", "(discarded points with $\\mu<=0.05$ $-$ Sing 2010)",
+    FT_names = ["", "(discarded points with $\\mu \\leq 0.05$ $-$ Sing 2010)",
                 "(100-point interpolation $-$ Claret & Bloemen 2011)"]
+    fn_suffix = ["", "_mu>0.05", "_interp100"]
     kwargs = dict(s=5, alpha=.2, zorder=1)
     RF_list = list(intensity_profiles.keys())
     for RF in RF_list:
         rf_name = os.path.splitext(os.path.basename(RF))[0]
-        fn = ("{}_intensity_profiles__{}.png"
-              .format(star["Name"].replace(" ", "_"), rf_name))
+        fn = ("{}_intensity_profiles__{}{}.png"
+              .format(star["Name"].replace(" ", "_"), rf_name,
+                      fn_suffix[FT_idx]))
         if rf_name.lower().startswith("uniform"):
             rf_name = ("top-hat filter from {} A to {} A"
                        .format(*rf_name.split("_")[1:]))

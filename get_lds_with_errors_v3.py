@@ -21,7 +21,6 @@ import get_lds as lds
 VERSION = 'v.1.3.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
-ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
@@ -415,6 +414,7 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                 "PHOENIX": os.path.join(PHOENIX_DIR, "phoenix_grid.fits.gz")}
     for model, grid_fn in grid_fns.items():
         if not os.path.isfile(grid_fn):
+            print(grid_fn)
             raise FileNotFoundError("{} grid file could not be found: "
                                     "'update_{}_grid()' must be called first"
                                     .format(model, model.lower()))
