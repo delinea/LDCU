@@ -414,7 +414,6 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                 "PHOENIX": os.path.join(PHOENIX_DIR, "phoenix_grid.fits.gz")}
     for model, grid_fn in grid_fns.items():
         if not os.path.isfile(grid_fn):
-            print(grid_fn)
             raise FileNotFoundError("{} grid file could not be found: "
                                     "'update_{}_grid()' must be called first"
                                     .format(model, model.lower()))
