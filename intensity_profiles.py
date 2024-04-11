@@ -15,7 +15,7 @@ LINECOLOR = matplotlib.rcParams["ytick.color"]
 
 
 # Compute and store intensity profile interpolators
-def intensity_profile_interpolators(star, RF_list, main_dir="",
+def intensity_profile_interpolators(star, RF_list, models=None, main_dir="",
                                     overwrite=False, nsig=4):
     Teff = star["Teff"]
     logg = star["logg"]
@@ -31,9 +31,10 @@ def intensity_profile_interpolators(star, RF_list, main_dir="",
                   "M_H": (M_H.n-nsig*M_H.s, M_H.n+nsig*M_H.s),
                   "vturb": (max(0, vturb.n-nsig*vturb.s),
                             vturb.n+nsig*vturb.s)}
-        glds.download_files(**bounds, force_download=False)
-        subgrids = glds.get_subgrids(**bounds)
+        glds.download_files(**bounds, models=models, force_download=False)
+        subgrids = glds.get_subgrids(**bounds, models=models)
         ip_interp = glds.get_profile_interpolators(subgrids, RF_list,
+                                                   models=models,
                                                    interpolation_order=1,
                                                    atlas_correction=True,
                                                    photon_correction=True,
@@ -46,7 +47,7 @@ def intensity_profile_interpolators(star, RF_list, main_dir="",
         with open(fn, "rb") as f:
             ip_interp = pickle.load(f)
 
-    return(ip_interp)
+    return ip_interp
 
 
 # Drawing stellar parameters from normal distributions
@@ -68,7 +69,7 @@ def get_samples(star, RF_list, nsamples=10000):
                 if j >= n_max:
                     raise RuntimeError("failed to draw stellar parameters")
                 j += 1
-    return(vals)
+    return vals
 
 
 # Interpolating ATLAS and PHOENIX LD curves
@@ -99,7 +100,7 @@ def intensity_profiles(star, ip_interp, samples, main_dir="", save=False):
             intensity_profiles_RF[FT] = (mu, I)
             pbar.update()
         intensity_profiles_dict[RF] = intensity_profiles_RF
-        
+
         if save:
             # saving intensity profiles
             rf_name = os.path.splitext(os.path.basename(RF))[0]
@@ -120,51 +121,51 @@ def intensity_profiles(star, ip_interp, samples, main_dir="", save=False):
             os.system("gzip '{}'".format(fn))
     pbar.close()
 
-    return(intensity_profiles_dict)
+    return intensity_profiles_dict
 
 
 # plotting and computing log-likelihood
 def ld_linear_model(mu, a):
-    return(1.0-a*(1.0-mu))
+    return 1.0-a*(1.0-mu)
 
 
 def ld_square_root_model(mu, s1, s2):
-    return(1.0-s1*(1.0-mu)-s2*(1.0-np.sqrt(mu)))
+    return 1.0-s1*(1.0-mu)-s2*(1.0-np.sqrt(mu))
 
 
 def ld_quadratic_model(mu, u1, u2):
-    return(1.0-u1*(1.0-mu)-u2*(1.0-mu)**2)
+    return 1.0-u1*(1.0-mu)-u2*(1.0-mu)**2
 
 
 def ld_kipping2013_model(mu, q1, q2):
     u1 = 2*np.sqrt(q1)*q2
     u2 = np.sqrt(q1)*(1-2*q2)
-    return(1.0-u1*(1.0-mu)-u2*(1.0-mu)**2)
+    return 1.0-u1*(1.0-mu)-u2*(1.0-mu)**2
 
 
 def ld_three_parameter_model(mu, b1, b2, b3):
-    return(1.0-b1*(1.0-mu)-b2*(1.0-np.sqrt(mu)**3)-b3*(1-mu**2))
+    return 1.0-b1*(1.0-mu)-b2*(1.0-np.sqrt(mu)**3)-b3*(1-mu**2)
 
 
 def ld_non_linear_model(mu, c1, c2, c3, c4):
-    return(1.0-c1*(1.0-np.sqrt(mu))-c2*(1.0-mu)-c3*(1.0-np.sqrt(mu)**3)
-           - c4*(1-mu**2))
+    return (1.0-c1*(1.0-np.sqrt(mu))-c2*(1.0-mu)-c3*(1.0-np.sqrt(mu)**3)
+            - c4*(1-mu**2))
 
 
 def ld_logarithmic_model(mu, l1, l2):
-    return(1.0-l1*(1.0-mu)-l2*mu*np.log(mu))
+    return 1.0-l1*(1.0-mu)-l2*mu*np.log(mu)
 
 
 def ld_exponential_model(mu, e1, e2):
-    return(1.0-e1*(1.0-mu)-e2/(1.0-np.exp(mu)))
+    return 1.0-e1*(1.0-mu)-e2/(1.0-np.exp(mu))
 
 
 def ld_power2_model(mu, p1, p2):
-    return(1.0-p1*(1.0-mu**p2))
+    return 1.0-p1*(1.0-mu**p2)
 
 
 def chi2(mu, I, u1, u2, ld_model):
-    return(np.sum((I-ld_model(mu, u1, u2))**2))
+    return np.sum((I-ld_model(mu, u1, u2))**2)
 
 
 def lnlike(mu, I, u1, u2, fit_func):
@@ -172,7 +173,7 @@ def lnlike(mu, I, u1, u2, fit_func):
     chi2_min = chi2(mu, I, u1_best.n, u2_best.n)
     chi2_val = chi2(mu, I, u1, u2)
     ll = -0.5*(chi2_val/chi2_min-1)
-    return(ll)
+    return ll
 
 
 ld_laws = {"linear": (ld_linear_model, glds.lds.fit_linear),
@@ -256,4 +257,4 @@ def plot_intensity_profiles(star, intensity_profiles, ld_law="quadratic",
         ax.legend(loc="lower right", fontsize=8)
         fig.savefig(os.path.join(main_dir, fn), dpi=300)
 
-    return(fig)
+    return fig

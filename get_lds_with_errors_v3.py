@@ -21,6 +21,7 @@ import get_lds as lds
 VERSION = 'v.1.3.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
+ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
@@ -98,7 +99,7 @@ else:
 
 def get_available_atlas_pck_files():
     website = urlrequest.urlopen(ATLAS_WEBSITE)
-    assert(isinstance(website, urlrequest.http.client.HTTPResponse))
+    assert isinstance(website, urlrequest.http.client.HTTPResponse)
     website_list = [str(line, "utf-8") for line in website.readlines()]
     z_list = []
     for line in website_list:
@@ -112,7 +113,7 @@ def get_available_atlas_pck_files():
     for z in tqdm.tqdm(z_list, desc="Querying ATLAS website",
                        dynamic_ncols=True):
         website_z = urlrequest.urlopen(ATLAS_WEBSITE+z)
-        assert(isinstance(website_z, urlrequest.http.client.HTTPResponse))
+        assert isinstance(website_z, urlrequest.http.client.HTTPResponse)
         website_z_list = [str(line, "utf-8") for line in website_z.readlines()]
         for line in website_z_list:
             fid = "i{}k".format(z[4:-1])
@@ -132,14 +133,14 @@ def get_available_atlas_pck_files():
                 filesize = np.uint32(filesize)
             url = ATLAS_WEBSITE+z+filename
             atlas_pck[url] = filesize
-    return(atlas_pck)
+    return atlas_pck
 
 
 def update_atlas_grid(force_download=False, remove_downloaded=False):
     atlas_pck = get_available_atlas_pck_files()
 
     def filename_from_url(url):
-        return(os.path.join(ATLAS_DIR, "raw_models", os.path.basename(url)))
+        return os.path.join(ATLAS_DIR, "raw_models", os.path.basename(url))
 
     pck_list = atlas_pck.copy()
     if force_download:
@@ -326,7 +327,7 @@ def update_phoenix_grid():
             continue
         idx = line.index(">Z") + 1
         z_list.append(line[idx: idx+5].strip())
-    assert(len(set(z_list)) == len(z_list))
+    assert len(set(z_list)) == len(z_list)
     phoenix_grid = {}
     for z in tqdm.tqdm(z_list, desc="Querying PHOENIX website",
                        dynamic_ncols=True):
@@ -346,12 +347,12 @@ def update_phoenix_grid():
             z_ = np.float32(filename[13:17])
             assert z_ == np.float32(z[1:])
             url = PHOENIX_WEBSITE+z+"/"+filename
-            assert(url not in phoenix_grid)
+            assert url not in phoenix_grid
             phoenix_grid[url] = (teff, logg, z_, np.float32(2), filesize)
 
     def filename_from_url(url, sub_dir):
-        return(os.path.join(PHOENIX_DIR, "raw_models", sub_dir,
-                            os.path.basename(url)))
+        return os.path.join(PHOENIX_DIR, "raw_models", sub_dir,
+                            os.path.basename(url))
 
     phoenix_teff = np.sort(list(set(phoenix_grid[fn][0]
                                     for fn in phoenix_grid)))
@@ -408,10 +409,16 @@ def update_phoenix_grid():
 
 
 def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
-                 M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf)):
+                 M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf), models=None):
     bounds = locals()
+    models = bounds.pop("models")
     grid_fns = {"ATLAS": os.path.join(ATLAS_DIR, "atlas_grid.fits.gz"),
                 "PHOENIX": os.path.join(PHOENIX_DIR, "phoenix_grid.fits.gz")}
+    if models is not None:
+        all_models = list(grid_fns.keys())
+        for model in all_models:
+            if model not in models:
+                grid_fns.pop(model)
     for model, grid_fn in grid_fns.items():
         if not os.path.isfile(grid_fn):
             raise FileNotFoundError("{} grid file could not be found: "
@@ -444,15 +451,16 @@ def get_subgrids(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                 sg[kw] = grid[kw][idx]
         subgrids[model] = sg
 
-    return(subgrids)
+    return subgrids
 
 
 def download_files(Teff=(-np.inf, np.inf), logg=(-np.inf, np.inf),
                    M_H=(-np.inf, np.inf), vturb=(-np.inf, np.inf),
-                   force_download=False):
+                   models=None, force_download=False):
     bounds = locals()
+    models = bounds.pop("models")
     force_download = bounds.pop("force_download")
-    subgrids = get_subgrids(**bounds)
+    subgrids = get_subgrids(**bounds, models=models)
     urls = []
     sizes = []
     ofns = []
@@ -546,13 +554,13 @@ def check_phoenix_library(verbose=True, check_all=False):
             bad_files[fn] = " | ".join(err)
 
     if len(bad_files) == 0:
-        return(None)
+        return None
     elif verbose:
         n = np.max([len(fn) for fn in bad_files.keys()])
         txt = "{{:{}}}: {{}}".format(n)
         for fn, err in bad_files.items():
             print(txt.format(fn, err))
-    return(bad_files)
+    return bad_files
 
 
 def read_atlas_pck_file(pck_file):
@@ -560,7 +568,7 @@ def read_atlas_pck_file(pck_file):
         data = f.read()
 
     if "TEFF" in data:
-        assert("\x0c" not in data)
+        assert "\x0c" not in data
     else:
         data = data.replace("\n", "\n ")
         data = data.replace(" EFF", "TEFF")
@@ -574,7 +582,7 @@ def read_atlas_pck_file(pck_file):
     n = 115
     idx = [9, 10] + [6, ] * 16
     idx = np.cumsum(idx)
-    assert(idx[-1] == n)
+    assert idx[-1] == n
     n_idx = len(idx)
     for i in range(n_blocks):
         block_i = blocks[i]
@@ -588,7 +596,7 @@ def read_atlas_pck_file(pck_file):
                 continue
             if "TEFF" in lines[j-2]:
                 continue
-            if line == "INTENSITY": # bad line spotted in 'ip01k2.pck'
+            if line == "INTENSITY":     # bad line spotted in 'ip01k2.pck'
                 bad_lines[j] = True
                 continue
             if len(line) != n:
@@ -600,7 +608,7 @@ def read_atlas_pck_file(pck_file):
             new_lines[j] = ",".join(cols)
         blocks[i] = list(np.array(new_lines)[~bad_lines])
 
-    return(blocks)
+    return blocks
 
 
 def extract_atlas_pck(pck_file, overwrite=True):
@@ -695,7 +703,7 @@ def extract_atlas_pck(pck_file, overwrite=True):
         if not overwrite and os.path.isfile(filename+".gz"):
             continue
 
-        assert(block[1].split()[0] == "wl(nm)")
+        assert block[1].split()[0] == "wl(nm)"
         mus = np.array(block[2].split(), float)
         data = [line.split(",") for line in block[3:]]
 
@@ -739,7 +747,7 @@ def extract_atlas_pck(pck_file, overwrite=True):
     return filenames
 
 
-def get_profile_interpolators(subgrids, RF, interpolation_order=1,
+def get_profile_interpolators(subgrids, RF, models=None, interpolation_order=1,
                               atlas_correction=True, photon_correction=True,
                               max_bad_RF=0.0, overwrite_pck=False,
                               atlas_hdu=1):
@@ -787,196 +795,214 @@ def get_profile_interpolators(subgrids, RF, interpolation_order=1,
                                    "function '{}'".format(RF)) from None
 
     # ATLAS model
-    for i, point in enumerate(tqdm.tqdm(points["ATLAS"],
-                                        desc="Computing ATLAS LD curves",
-                                        dynamic_ncols=True)):
-        Teff, grav, metal, vturb = point
-        pck_file = filenames["ATLAS"][i]
-        fits_pattern = os.path.join(ATLAS_DIR, os.path.basename(pck_file)[1:6],
-                                    "{:.0f}".format(Teff),
-                                    "grav_{}_lh_*.fits.gz".format(grav))
-        fits_files = glob.glob(fits_pattern)
-        if len(fits_files) == 0:
-            extract_atlas_pck(pck_file, overwrite=overwrite_pck)
+    if "ATLAS" in filenames:
+        for i, point in enumerate(tqdm.tqdm(points["ATLAS"],
+                                            desc="Computing ATLAS LD curves",
+                                            dynamic_ncols=True)):
+            Teff, grav, metal, vturb = point
+            pck_file = filenames["ATLAS"][i]
+            fits_pattern = os.path.join(ATLAS_DIR,
+                                        os.path.basename(pck_file)[1:6],
+                                        "{:.0f}".format(Teff),
+                                        "grav_{}_lh_*.fits.gz".format(grav))
             fits_files = glob.glob(fits_pattern)
             if len(fits_files) == 0:
-                raise FileNotFoundError("could not find '{}'"
-                                        " after PCK extraction"
-                                        .format(fits_pattern))
+                extract_atlas_pck(pck_file, overwrite=overwrite_pck)
+                fits_files = glob.glob(fits_pattern)
+                if len(fits_files) == 0:
+                    raise FileNotFoundError("could not find '{}'"
+                                            " after PCK extraction"
+                                            .format(fits_pattern))
+                elif len(fits_files) > 1:
+                    raise RuntimeError("found multiple files '{}'"
+                                       " after PCK extraction"
+                                       .format(fits_pattern))
             elif len(fits_files) > 1:
                 raise RuntimeError("found multiple files '{}'"
-                                   " after PCK extraction"
                                    .format(fits_pattern))
-        elif len(fits_files) > 1:
-            raise RuntimeError("found multiple files '{}'"
-                               .format(fits_pattern))
-        fits_file = fits_files[0]
-        wavelengths, I, mu = lds.read_ATLAS_fits(fits_file, hdu=atlas_hdu)
-        mu100 = np.arange(1.0, 0.0, -0.01)
-        I100 = np.full((len(I), len(mu100)), np.nan)
-        for j, I_j in enumerate(I):
-            I100[j] = UnivariateSpline(mu[::-1], I_j[::-1], s=0, k=3)(mu100)
-        idx_AS = mu >= 0.05
-        if i == 0:
-            ATLAS_mu = {"A17": mu, "AS": mu[idx_AS], "A100": mu100}
-            ATLAS_I = {RF: {FT: np.full((len(points["ATLAS"]), len(mu_)),
-                                        np.nan)
-                            for FT, mu_ in ATLAS_mu.items()} for RF in RF_list}
-        args = (atlas_correction, photon_correction, interpolation_order)
-        for RF in RF_list:
-            idx_ok = ((wl[RF] >= np.min(wavelengths))
-                      & (wl[RF] <= np.max(wavelengths)))
-            if not np.all(idx_ok):
-                if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
-                    if max_bad_RF == 0:
-                        raise ValueError("The response function ('{}') goes "
-                                         "beyond wavelength range ([{}, {}] "
-                                         "Angstroms) !"
-                                         .format(RF, np.min(wavelengths),
-                                                 np.max(wavelengths)))
-                    else:
-                        raise ValueError("More than {:.1f}% of the response "
-                                         "function ('{}') lies beyond "
-                                         "wavelength range ([{}, {}] "
-                                         "Angstroms) !"
-                                         .format(max_bad_RF*100, RF,
-                                                 np.min(wavelengths),
-                                                 np.max(wavelengths)))
-            S_ok = S[RF][idx_ok]
-            wl_ok = wl[RF][idx_ok]
-            I0 = lds.integrate_response_ATLAS(wavelengths, I, mu,
-                                              S_ok, wl_ok, *args)
-            I0_100 = lds.integrate_response_ATLAS(wavelengths, I100, mu100,
+            fits_file = fits_files[0]
+            wavelengths, I, mu = lds.read_ATLAS_fits(fits_file, hdu=atlas_hdu)
+            mu100 = np.arange(1.0, 0.0, -0.01)
+            I100 = np.full((len(I), len(mu100)), np.nan)
+            for j, I_j in enumerate(I):
+                I100[j] = UnivariateSpline(mu[::-1], I_j[::-1], s=0,
+                                           k=3)(mu100)
+            idx_AS = mu >= 0.05
+            if i == 0:
+                ATLAS_mu = {"A17": mu, "AS": mu[idx_AS], "A100": mu100}
+                ATLAS_I = {RF: {FT: np.full((len(points["ATLAS"]), len(mu_)),
+                                            np.nan)
+                                for FT, mu_ in ATLAS_mu.items()}
+                           for RF in RF_list}
+            args = (atlas_correction, photon_correction, interpolation_order)
+            for RF in RF_list:
+                idx_ok = ((wl[RF] >= np.min(wavelengths))
+                          & (wl[RF] <= np.max(wavelengths)))
+                if not np.all(idx_ok):
+                    if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
+                        if max_bad_RF == 0:
+                            raise ValueError("The response function ('{}') "
+                                             "goes beyond wavelength range "
+                                             "([{}, {}] Angstroms) !"
+                                             .format(RF, np.min(wavelengths),
+                                                     np.max(wavelengths)))
+                        else:
+                            raise ValueError("More than {:.1f}% of the "
+                                             "response function ('{}') lies "
+                                             "beyond wavelength range "
+                                             "([{}, {}] Angstroms) !"
+                                             .format(max_bad_RF*100, RF,
+                                                     np.min(wavelengths),
+                                                     np.max(wavelengths)))
+                S_ok = S[RF][idx_ok]
+                wl_ok = wl[RF][idx_ok]
+                I0 = lds.integrate_response_ATLAS(wavelengths, I, mu,
                                                   S_ok, wl_ok, *args)
-            ATLAS_I[RF]["A17"][i] = I0
-            ATLAS_I[RF]["AS"][i] = I0[idx_AS]
-            ATLAS_I[RF]["A100"][i] = I0_100
+                I0_100 = lds.integrate_response_ATLAS(wavelengths, I100, mu100,
+                                                      S_ok, wl_ok, *args)
+                ATLAS_I[RF]["A17"][i] = I0
+                ATLAS_I[RF]["AS"][i] = I0[idx_AS]
+                ATLAS_I[RF]["A100"][i] = I0_100
+    else:
+        pass
 
     # PHOENIX model
-    n_phoenix_fns = len(filenames["PHOENIX"])
-    for i, filename in enumerate(tqdm.tqdm(filenames["PHOENIX"],
-                                           desc="Computing PHOENIX LD curves",
-                                           dynamic_ncols=True)):
-        filename = filename + ".gz"
-        if not os.path.isfile(filename):
-            filenames_ = glob.glob(os.path.join(PHOENIX_DIR, "raw_models", "*",
-                                                filename))
-            if len(filenames_) == 0:
-                raise FileNotFoundError("no such file '{}'".format(filename))
-            elif len(filenames_) > 1:
-                raise RuntimeError("found multiple files '{}'"
-                                   .format(filename))
-        try:
-            wavelengths, I, mu = lds.read_PHOENIX(filename)
-        except KeyError:
-            raise IOError("File {} looks corrupted. Please delete it and run "
-                          "the code to download it again.".format(filename))
-        except BaseException as e:
-            raise e
+    if "PHOENIX" in filenames:
+        n_phoenix_fns = len(filenames["PHOENIX"])
+        for i, filename in enumerate(tqdm.tqdm(filenames["PHOENIX"],
+                                               desc=("Computing PHOENIX LD "
+                                                     "curves"),
+                                               dynamic_ncols=True)):
+            filename = filename + ".gz"
+            if not os.path.isfile(filename):
+                filenames_ = glob.glob(os.path.join(PHOENIX_DIR, "raw_models",
+                                                    "*", filename))
+                if len(filenames_) == 0:
+                    raise FileNotFoundError("no such file '{}'"
+                                            .format(filename))
+                elif len(filenames_) > 1:
+                    raise RuntimeError("found multiple files '{}'"
+                                       .format(filename))
+            try:
+                wavelengths, I, mu = lds.read_PHOENIX(filename)
+            except KeyError:
+                raise IOError("File {} looks corrupted. Please delete it and "
+                              "run the code to download it again."
+                              .format(filename))
+            except BaseException as e:
+                raise e
 
-        if i == 0:
-            PHOENIX_sizes = {"P": len(mu), "PS": len(mu), "P100": 100}
-            PHOENIX_mu = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
-                               for FT, n in PHOENIX_sizes.items()}
-                          for RF in RF_list}
-            PHOENIX_I = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
-                              for FT, n in PHOENIX_sizes.items()}
-                         for RF in RF_list}
+            if i == 0:
+                PHOENIX_sizes = {"P": len(mu), "PS": len(mu), "P100": 100}
+                PHOENIX_mu = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
+                                   for FT, n in PHOENIX_sizes.items()}
+                              for RF in RF_list}
+                PHOENIX_I = {RF: {FT: np.full((n_phoenix_fns, n), np.nan)
+                                  for FT, n in PHOENIX_sizes.items()}
+                             for RF in RF_list}
+            for RF in RF_list:
+                idx_ok = ((wl[RF] >= np.min(wavelengths))
+                          & (wl[RF] <= np.max(wavelengths)))
+                if not np.all(idx_ok):
+                    if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
+                        if max_bad_RF == 0:
+                            raise ValueError("The response function ('{}') "
+                                             "goes beyond wavelength range "
+                                             "([{}, {}] Angstroms) !"
+                                             .format(RF, np.min(wavelengths),
+                                                     np.max(wavelengths)))
+                        else:
+                            raise ValueError("More than {:.1f}% of the "
+                                             "response function ('{}') lies "
+                                             "beyond wavelength range "
+                                             "([{}, {}] Angstroms) !"
+                                             .format(max_bad_RF*100, RF,
+                                                     np.min(wavelengths),
+                                                     np.max(wavelengths)))
+                S_ok = S[RF][idx_ok]
+                wl_ok = wl[RF][idx_ok]
+                args = (S_ok, wl_ok, photon_correction, interpolation_order)
+                I0 = lds.integrate_response_PHOENIX(wavelengths, I, mu, *args)
+                r, fine_r_max = lds.get_rmax(mu, I0)
+                new_r = r/fine_r_max
+                idx_new = new_r <= 1.0
+                new_r = new_r[idx_new]
+                new_mu = np.sqrt(1.0-(new_r**2))
+                I0 = I0[idx_new]
+                mu100 = np.arange(0.01, 1.01, 0.01)
+                I100 = np.zeros((len(wavelengths), len(mu100)))
+                for j, I_j in enumerate(I):
+                    II = UnivariateSpline(new_mu, I_j[idx_new], s=0, k=3)
+                    I100[j] = II(mu100)
+                I0_100 = lds.integrate_response_PHOENIX(wavelengths, I100,
+                                                        mu100, *args)
+                idx_PS = new_mu >= 0.05
+                PHOENIX_mu[RF]["P"][i, -len(new_mu):] = new_mu
+                PHOENIX_mu[RF]["PS"][i, -sum(idx_PS):] = new_mu[idx_PS]
+                PHOENIX_mu[RF]["P100"][i] = mu100
+                PHOENIX_I[RF]["P"][i, -len(new_mu):] = I0
+                PHOENIX_I[RF]["PS"][i, -sum(idx_PS):] = I0[idx_PS]
+                PHOENIX_I[RF]["P100"][i] = I0_100
+        # removing/correcting NaN values
         for RF in RF_list:
-            idx_ok = ((wl[RF] >= np.min(wavelengths))
-                      & (wl[RF] <= np.max(wavelengths)))
-            if not np.all(idx_ok):
-                if np.sum(S[RF][~idx_ok])/np.sum(S[RF]) > max_bad_RF:
-                    if max_bad_RF == 0:
-                        raise ValueError("The response function ('{}') goes "
-                                         "beyond wavelength range ([{}, {}] "
-                                         "Angstroms) !"
-                                         .format(RF, np.min(wavelengths),
-                                                 np.max(wavelengths)))
-                    else:
-                        raise ValueError("More than {:.1f}% of the response "
-                                         "function ('{}') lies beyond "
-                                         "wavelength range ([{}, {}] "
-                                         "Angstroms) !"
-                                         .format(max_bad_RF*100, RF,
-                                                 np.min(wavelengths),
-                                                 np.max(wavelengths)))
-            S_ok = S[RF][idx_ok]
-            wl_ok = wl[RF][idx_ok]
-            args = (S_ok, wl_ok, photon_correction, interpolation_order)
-            I0 = lds.integrate_response_PHOENIX(wavelengths, I, mu, *args)
-            r, fine_r_max = lds.get_rmax(mu, I0)
-            new_r = r/fine_r_max
-            idx_new = new_r <= 1.0
-            new_r = new_r[idx_new]
-            new_mu = np.sqrt(1.0-(new_r**2))
-            I0 = I0[idx_new]
-            mu100 = np.arange(0.01, 1.01, 0.01)
-            I100 = np.zeros((len(wavelengths), len(mu100)))
-            for j, I_j in enumerate(I):
-                II = UnivariateSpline(new_mu, I_j[idx_new], s=0, k=3)
-                I100[j] = II(mu100)
-            I0_100 = lds.integrate_response_PHOENIX(wavelengths, I100, mu100,
-                                                    *args)
-            idx_PS = new_mu >= 0.05
-            PHOENIX_mu[RF]["P"][i, -len(new_mu):] = new_mu
-            PHOENIX_mu[RF]["PS"][i, -sum(idx_PS):] = new_mu[idx_PS]
-            PHOENIX_mu[RF]["P100"][i] = mu100
-            PHOENIX_I[RF]["P"][i, -len(new_mu):] = I0
-            PHOENIX_I[RF]["PS"][i, -sum(idx_PS):] = I0[idx_PS]
-            PHOENIX_I[RF]["P100"][i] = I0_100
-    # removing/correcting NaN values
-    for RF in RF_list:
-        for FT in PHOENIX_mu[RF]:
-            assert np.all(np.isfinite(PHOENIX_mu[RF][FT])
-                          == np.isfinite(PHOENIX_I[RF][FT]))
-            idx_ok = np.any(np.isfinite(PHOENIX_I[RF][FT]), axis=0)
-            PHOENIX_mu[RF][FT] = PHOENIX_mu[RF][FT][:, idx_ok]
-            PHOENIX_I[RF][FT] = PHOENIX_I[RF][FT][:, idx_ok]
-            idx_nok = ~np.isfinite(PHOENIX_I[RF][FT])
-            if np.any(idx_nok):
-                idx_ok = np.argmin(idx_nok, axis=1)
-                for i, idx in enumerate(idx_ok):
-                    if idx == 0:
-                        continue
-                    PHOENIX_mu[RF][FT][i, :idx] = PHOENIX_mu[RF][FT][i, idx]
-                    PHOENIX_I[RF][FT][i, :idx] = PHOENIX_I[RF][FT][i, idx]
-            assert np.all(np.isfinite(PHOENIX_mu[RF][FT]))
-            assert np.all(np.isfinite(PHOENIX_I[RF][FT]))
+            for FT in PHOENIX_mu[RF]:
+                assert np.all(np.isfinite(PHOENIX_mu[RF][FT])
+                              == np.isfinite(PHOENIX_I[RF][FT]))
+                idx_ok = np.any(np.isfinite(PHOENIX_I[RF][FT]), axis=0)
+                PHOENIX_mu[RF][FT] = PHOENIX_mu[RF][FT][:, idx_ok]
+                PHOENIX_I[RF][FT] = PHOENIX_I[RF][FT][:, idx_ok]
+                idx_nok = ~np.isfinite(PHOENIX_I[RF][FT])
+                if np.any(idx_nok):
+                    idx_ok = np.argmin(idx_nok, axis=1)
+                    for i, idx in enumerate(idx_ok):
+                        if idx == 0:
+                            continue
+                        PHOENIX_mu[RF][FT][i, :idx] = PHOENIX_mu[RF][FT][i,
+                                                                         idx]
+                        PHOENIX_I[RF][FT][i, :idx] = PHOENIX_I[RF][FT][i, idx]
+                assert np.all(np.isfinite(PHOENIX_mu[RF][FT]))
+                assert np.all(np.isfinite(PHOENIX_I[RF][FT]))
+    else:
+        pass
 
     # creating interpolators
     # TODO: to be implemented with scipy.interpolate.RBFInterpolator
     intensities = {}
     for RF in RF_list:
         intensities[RF] = {}
-        for FT in ATLAS_mu:
-            try:
-                lndi_I = LinearNDInterpolator(points["ATLAS"], ATLAS_I[RF][FT])
-            except QhullError:
-                warnings.warn("Interpolation issue with ATLAS {} profiles. "
-                              "This might be due to stellar parameters being "
-                              "too close or beyond the limits covered by the "
-                              "ATLAS library. Limb-darkening parameters will "
-                              "not be derived."
-                              .format(FT))
-                lndi_I = None
-            intensities[RF][FT] = (ATLAS_mu[FT], lndi_I)
-        for FT in PHOENIX_mu[RF]:
-            phoenix_points = points["PHOENIX"][:, :-1]  # removing vturb
-            try:
-                lndi_mu = LinearNDInterpolator(phoenix_points,
-                                               PHOENIX_mu[RF][FT])
-                lndi_I = LinearNDInterpolator(phoenix_points,
-                                              PHOENIX_I[RF][FT])
-            except QhullError:
-                warnings.warn("Interpolation issue with ATLAS {} profiles. "
-                              "This might be due to stellar parameters being "
-                              "too close or beyond the limits covered by the "
-                              "ATLAS library. Limb-darkening parameters will "
-                              "not be derived."
-                              .format(FT))
-                lndi_mu, lndi_I = None, None
-            intensities[RF][FT] = (lndi_mu, lndi_I)
+        if "ATLAS" in filenames:
+            for FT in ATLAS_mu:
+                try:
+                    lndi_I = LinearNDInterpolator(points["ATLAS"],
+                                                  ATLAS_I[RF][FT])
+                except QhullError:
+                    warnings.warn("Interpolation issue with ATLAS {} "
+                                  "profiles. This might be due to stellar "
+                                  "parameters being too close or beyond the "
+                                  "limits covered by the ATLAS library. "
+                                  "Limb-darkening parameters will not be "
+                                  "derived."
+                                  .format(FT))
+                    lndi_I = None
+                intensities[RF][FT] = (ATLAS_mu[FT], lndi_I)
+        if "PHOENIX" in filenames:
+            for FT in PHOENIX_mu[RF]:
+                phoenix_points = points["PHOENIX"][:, :-1]  # removing vturb
+                try:
+                    lndi_mu = LinearNDInterpolator(phoenix_points,
+                                                   PHOENIX_mu[RF][FT])
+                    lndi_I = LinearNDInterpolator(phoenix_points,
+                                                  PHOENIX_I[RF][FT])
+                except QhullError:
+                    warnings.warn("Interpolation issue with PHOENIX {} "
+                                  "profiles. This might be due to stellar "
+                                  "parameters being too close or beyond the "
+                                  "limits covered by the PHOENIX library. "
+                                  "Limb-darkening parameters will not be "
+                                  "derived."
+                                  .format(FT))
+                    lndi_mu, lndi_I = None, None
+                intensities[RF][FT] = (lndi_mu, lndi_I)
 
     # returning single value if input RF in not a list
     if single_RF:
@@ -1307,7 +1333,7 @@ def get_summary(ldc, fmt="8.6f"):
 
 
 def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
-                        RF="cheops_response_function.dat",
+                        RF="cheops_response_function.dat", models=None,
                         nsig=4, nsamples=2000, max_bad_points=0.30,
                         max_bad_RF=0.0, overwrite_pck=False, atlas_hdu=1):
     if vturb is None:
@@ -1329,10 +1355,10 @@ def get_lds_with_errors(Teff=None, logg=None, M_H=None, vturb=None,
               "M_H": (M_H.n-nsig*M_H.s, M_H.n+nsig*M_H.s),
               "vturb": (max(0, vturb.n-nsig*vturb.s), vturb.n+nsig*vturb.s)}
 
-    download_files(**bounds)
-    subgrids = get_subgrids(**bounds)
+    download_files(**bounds, models=models)
+    subgrids = get_subgrids(**bounds, models=models)
 
-    ip_interp = get_profile_interpolators(subgrids, RF_list,
+    ip_interp = get_profile_interpolators(subgrids, RF_list, models=models,
                                           interpolation_order=1,
                                           atlas_correction=True,
                                           photon_correction=True,
