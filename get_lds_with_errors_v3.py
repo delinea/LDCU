@@ -21,7 +21,7 @@ import get_lds as lds
 VERSION = 'v.1.3.deline'
 
 ROOTDIR = os.path.dirname(os.path.realpath(__file__))
-ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
+#ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
