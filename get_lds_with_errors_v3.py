@@ -20,15 +20,16 @@ import get_lds as lds
 
 VERSION = 'v.1.3.deline'
 
-ROOTDIR = os.path.dirname(os.path.realpath(__file__))
-#ROOTDIR = "/Volumes/LaCie/LDCU_libraries"   # local directory
+ROOTDIR = "/Volumes/T7/LDCU_libraries"   # local directory
+if not os.path.isdir(ROOTDIR):
+    ROOTDIR = os.path.dirname(os.path.realpath(__file__))
 
 ATLAS_DIR = os.path.join(ROOTDIR, "atlas_models")
 ATLAS_WEBSITE = "http://kurucz.harvard.edu/grids/"
 ATLAS_Z = [-0.1, -0.2, -0.3, -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0,
            -4.5, -5.0, 0.0, 0.1, 0.2, 0.3, 0.5, 1.0]
 ATLAS_PCK_EXT = ["new.pck", ".pck19", ".pck"]   # from most recent to oldest
-PHOENIX_WEBSITE_ROOT = "http://phoenix.astro.physik.uni-goettingen.de/data/"
+PHOENIX_WEBSITE_ROOT = "https://ftp.gwdg.de/pub/misc/phoenix/"
 PHOENIX_DEFAULT = ("phoenix_models",
                    "v1.0/SpecIntFITS/PHOENIX-ACES-AGSS-COND-SPECINT-2011/")
 PHOENIX_EXTENDED = ("phoenix_v3_models", "v3.0/SpecIntFITS/")
